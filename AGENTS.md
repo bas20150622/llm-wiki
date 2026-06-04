@@ -204,6 +204,20 @@ When the user asks a question:
 4. If the answer is substantial and reusable, offer to file it as a new wiki page
 5. If filed, update `wiki/index.md` and append to `wiki/log.md`
 
+### Delete
+
+When the user wants to remove a source from the wiki:
+
+1. Confirm with the user which source to delete
+2. Read the source summary in `wiki/sources/` to identify all linked entity and concept pages
+3. For each linked entity page: remove citations, decrement `source_count`, delete the page if `source_count` reaches 0
+4. For each linked concept page: remove citations, decrement `source_count`, delete if `source_count` reaches 0, adjust `confidence` if warranted
+5. Delete the source summary from `wiki/sources/`
+6. Delete the raw source file from `raw/` (and its converted `.md` if applicable)
+7. Remove deleted pages from `wiki/index.md` and update counts
+8. Update `wiki/overview.md` if the deletion meaningfully changes the big picture
+9. Append a `delete` operation to `wiki/log.md`
+
 ### Lint
 
 When the user asks for a health check:
@@ -214,7 +228,7 @@ When the user asks for a health check:
 
 ## Rules
 
-1. **Never modify files in `raw/`.**
+1. **Never modify files in `raw/`.** The only exception is the Delete operation, which removes them entirely.
 2. **Always use `[[wikilinks]]`** for internal references.
 3. **Always update `wiki/index.md`** when creating or deleting pages.
 4. **Always append to `wiki/log.md`** after any operation.
@@ -233,4 +247,4 @@ When the user asks for a health check:
 
 ## Log Format
 
-`wiki/log.md` is append-only. Format: `## [YYYY-MM-DD] operation | description` followed by affected pages as wikilinks. Operations: `ingest`, `query`, `lint`, `update`, `create`.
+`wiki/log.md` is append-only. Format: `## [YYYY-MM-DD] operation | description` followed by affected pages as wikilinks. Operations: `ingest`, `query`, `lint`, `delete`, `update`, `create`.

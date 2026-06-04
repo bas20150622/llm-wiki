@@ -69,6 +69,16 @@ When the user asks a question:
 2. Synthesize an answer with wikilinks
 3. If the answer is worth keeping, offer to format it as a new wiki page
 
+## Delete Workflow
+
+When the user wants to remove a source:
+1. Confirm which source to delete
+2. Identify all entity and concept pages that reference it
+3. Output updated entity/concept pages with citations removed and source_count decremented. If source_count reaches 0, instruct the user to delete the page.
+4. Output the updated index.md (rows removed, counts updated)
+5. Output a log.md entry with operation `delete`
+6. Instruct the user to delete the source summary and raw file
+
 ## Rules
 
 1. Never modify `raw/` content

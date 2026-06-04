@@ -208,6 +208,27 @@ When the user asks a question:
 4. If the answer is substantial and reusable, ask the user if it should be filed as a new wiki page (concept, comparison, or entity)
 5. If filed, update `wiki/index.md` and append to `wiki/log.md`
 
+### Delete
+
+When the user wants to remove a source from the wiki:
+
+1. Confirm with the user which source to delete
+2. Read the source summary in `wiki/sources/` to identify all linked entity and concept pages
+3. For each linked entity page:
+   - Remove citations referencing the deleted source
+   - Decrement `source_count`
+   - If `source_count` reaches 0, delete the entity page
+4. For each linked concept page:
+   - Remove citations referencing the deleted source
+   - Decrement `source_count`
+   - If `source_count` reaches 0, delete the concept page
+   - If remaining sources still support the concept, adjust `confidence` if warranted
+5. Delete the source summary from `wiki/sources/`
+6. Delete the raw source file from `raw/` (and its converted `.md` if applicable)
+7. Remove deleted pages from `wiki/index.md` and update counts
+8. Update `wiki/overview.md` if the deletion meaningfully changes the big picture
+9. Append a `delete` operation to `wiki/log.md`
+
 ### Lint
 
 When the user asks for a health check:
@@ -225,7 +246,7 @@ When the user asks for a health check:
 
 ## Rules
 
-1. **Never modify files in `raw/`.** They are immutable source documents.
+1. **Never modify files in `raw/`.** They are immutable source documents. The only exception is the Delete operation, which removes them entirely.
 2. **Always use `[[wikilinks]]`** for internal references, never markdown links.
 3. **Always update `wiki/index.md`** when creating or deleting pages.
 4. **Always append to `wiki/log.md`** after any operation.
@@ -279,4 +300,4 @@ Total pages: N | Sources: N | Entities: N | Concepts: N | Comparisons: N
 - Details of what changed
 ```
 
-Operations: `ingest`, `query`, `lint`, `update`, `create`.
+Operations: `ingest`, `query`, `lint`, `delete`, `update`, `create`.

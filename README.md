@@ -18,6 +18,7 @@ Instead of RAG (re-deriving knowledge every query), the LLM incrementally builds
 
 - **Ingest** — drop a source in `raw/`, tell the LLM to process it. It writes a summary, creates/updates entity and concept pages, maintains cross-references, updates the index.
 - **Query** — ask questions against the wiki. The LLM reads the index, finds relevant pages, synthesizes an answer. Good answers get filed back as new pages.
+- **Delete** — remove a source and cascade the cleanup. The LLM deletes the source summary, removes citations from entity/concept pages, decrements source counts, and deletes any pages that have no remaining sources.
 - **Lint** — health-check the wiki for contradictions, orphan pages, stale claims, missing cross-references.
 
 ## Prerequisites
@@ -96,6 +97,29 @@ This wiki covers five domains:
 - **Consulting** — frameworks, methodologies, industry analysis
 - **Self-Improvement** — psychology, habits, health, productivity
 - **Raw Notes** — anything that doesn't fit the above
+
+## Adding a New Domain
+
+The wiki ships with five domains, but you can add more. Two files need updating:
+
+1. **Schema files** — add the new domain to the `## Domains` list in `CLAUDE.md`, `AGENTS.md`, and/or `chatgpt-instructions.md`:
+   ```yaml
+   - `my-new-domain` — short description of what it covers
+   ```
+
+2. **Overview** — add a section header in `wiki/overview.md`:
+   ```markdown
+   ## My New Domain
+
+   No content yet.
+   ```
+
+That's it. No directory or template changes needed — all page types, frontmatter, and workflows work across domains. Sources, entities, and concepts from different domains live in the same directories and cross-reference each other naturally through wikilinks.
+
+Use the `domain` frontmatter field to filter by domain in Dataview queries:
+```
+TABLE title, source_count FROM "wiki/concepts" WHERE domain = "my-new-domain"
+```
 
 ## Tips
 
