@@ -15,7 +15,22 @@ wiki/                    # LLM-generated pages — you own this entirely
   index.md               # Content catalog — read this FIRST on every operation
   log.md                 # Append-only chronological record
   overview.md            # High-level synthesis across all domains
+scripts/
+  convert.py             # Docling-based file converter (PDF, DOCX, PPTX, XLSX -> markdown)
+.venv/                   # Python virtual environment (uv-managed)
 ```
+
+## Document Conversion
+
+Non-markdown files in `raw/` (PDF, DOCX, PPTX, XLSX) must be converted to markdown before ingestion. Use the Docling converter:
+
+```bash
+.venv/bin/python scripts/convert.py raw/filename.pdf
+```
+
+This creates `raw/filename.md` alongside the original. The original binary is preserved; the LLM reads the `.md` version. The source summary links to the `.md` file.
+
+Supported formats: `.pdf`, `.docx`, `.pptx`, `.xlsx`
 
 ## Domains
 
@@ -164,19 +179,24 @@ When to choose each option.
 
 When the user adds a new source to `raw/` and asks you to process it:
 
-1. Read the source document fully
+1. If the source is a non-markdown file (PDF, DOCX, PPTX, XLSX), convert it first:
+   ```bash
+   .venv/bin/python scripts/convert.py raw/filename.ext
+   ```
+   Then proceed with the generated `.md` file.
+2. Read the source document fully
 2. Discuss key takeaways with the user — what stood out, what to emphasize
-3. Create a source summary page in `wiki/sources/`
-4. Identify entities mentioned — for each:
+4. Create a source summary page in `wiki/sources/`
+5. Identify entities mentioned — for each:
    - If the entity page exists: update it with new facts and increment `source_count`
    - If new: create the entity page
-5. Identify concepts discussed — for each:
+6. Identify concepts discussed — for each:
    - If the concept page exists: update it with new information, adjust `confidence` if warranted, increment `source_count`
    - If new: create the concept page
-6. Add cross-references: link new pages to existing related pages, and update existing pages to link back
-7. Update `wiki/index.md` with new entries
-8. Update `wiki/overview.md` if the source meaningfully changes the big picture for its domain
-9. Append to `wiki/log.md`
+7. Add cross-references: link new pages to existing related pages, and update existing pages to link back
+8. Update `wiki/index.md` with new entries
+9. Update `wiki/overview.md` if the source meaningfully changes the big picture for its domain
+10. Append to `wiki/log.md`
 
 ### Query
 

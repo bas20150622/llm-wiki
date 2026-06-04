@@ -1,3 +1,5 @@
+.venv/
+__pycache__/
 .obsidian/workspace.json
 .obsidian/workspace-mobile.json
 .obsidian/plugins/

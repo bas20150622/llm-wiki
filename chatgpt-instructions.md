@@ -42,6 +42,14 @@ The wiki has three layers:
 
 **Comparison:** Context, Comparison table, Analysis, Verdict, Sources list.
 
+## Document Conversion
+
+Non-markdown files (PDF, DOCX, PPTX, XLSX) must be converted before ingestion. The user runs:
+```bash
+.venv/bin/python scripts/convert.py raw/filename.pdf
+```
+This creates a `.md` file alongside the original. You work with the `.md` version.
+
 ## Ingest Workflow
 
 When the user shares a source:

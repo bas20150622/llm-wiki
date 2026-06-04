@@ -15,7 +15,22 @@ wiki/                    # LLM-generated pages — you own this entirely
   index.md               # Content catalog — read this FIRST on every operation
   log.md                 # Append-only chronological record
   overview.md            # High-level synthesis across all domains
+scripts/
+  convert.py             # Docling-based file converter (PDF, DOCX, PPTX, XLSX -> markdown)
+.venv/                   # Python virtual environment (uv-managed)
 ```
+
+## Document Conversion
+
+Non-markdown files in `raw/` (PDF, DOCX, PPTX, XLSX) must be converted to markdown before ingestion. Use the Docling converter:
+
+```bash
+.venv/bin/python scripts/convert.py raw/filename.pdf
+```
+
+This creates `raw/filename.md` alongside the original. The original binary is preserved; the LLM reads the `.md` version.
+
+Supported formats: `.pdf`, `.docx`, `.pptx`, `.xlsx`
 
 ## Domains
 
@@ -164,15 +179,20 @@ When to choose each option.
 
 When the user adds a new source to `raw/` and asks you to process it:
 
-1. Read the source document fully
-2. Discuss key takeaways with the user
-3. Create a source summary page in `wiki/sources/`
-4. Identify entities — create or update entity pages, maintain `source_count`
-5. Identify concepts — create or update concept pages, adjust `confidence` and `source_count`
-6. Add cross-references in both directions between related pages
-7. Update `wiki/index.md` with new entries
-8. Update `wiki/overview.md` if the source meaningfully changes the big picture
-9. Append to `wiki/log.md`
+1. If the source is a non-markdown file (PDF, DOCX, PPTX, XLSX), convert it first:
+   ```bash
+   .venv/bin/python scripts/convert.py raw/filename.ext
+   ```
+   Then proceed with the generated `.md` file.
+2. Read the source document fully
+3. Discuss key takeaways with the user
+4. Create a source summary page in `wiki/sources/`
+5. Identify entities — create or update entity pages, maintain `source_count`
+6. Identify concepts — create or update concept pages, adjust `confidence` and `source_count`
+7. Add cross-references in both directions between related pages
+8. Update `wiki/index.md` with new entries
+9. Update `wiki/overview.md` if the source meaningfully changes the big picture
+10. Append to `wiki/log.md`
 
 ### Query
 

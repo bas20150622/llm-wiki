@@ -20,7 +20,29 @@ Instead of RAG (re-deriving knowledge every query), the LLM incrementally builds
 - **Query** — ask questions against the wiki. The LLM reads the index, finds relevant pages, synthesizes an answer. Good answers get filed back as new pages.
 - **Lint** — health-check the wiki for contradictions, orphan pages, stale claims, missing cross-references.
 
+## Prerequisites
+
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
+- Python 3.12+
+
 ## Installation
+
+### Python environment (for document conversion)
+
+```bash
+cd llm-wiki
+uv venv .venv --python 3.12
+uv pip install --python .venv/bin/python docling --extra-index-url https://download.pytorch.org/whl/cpu --index-strategy unsafe-best-match
+```
+
+This installs [Docling](https://github.com/DS4SD/docling) (IBM's ML-based document converter) with CPU-only PyTorch. Supports PDF, DOCX, PPTX, and XLSX.
+
+To convert a file:
+```bash
+.venv/bin/python scripts/convert.py raw/my-report.pdf
+```
+
+This creates `raw/my-report.md` alongside the original. The LLM reads the markdown version.
 
 ### Obsidian (required)
 
