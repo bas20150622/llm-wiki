@@ -12,8 +12,9 @@ wiki/                    # LLM-generated pages — you own this entirely
   entities/              # People, orgs, tools, albums, books
   concepts/              # Ideas, theories, frameworks
   comparisons/           # Side-by-side analyses
+    howtos/                # Practical step-by-step guides
   index.md               # Content catalog — read this FIRST on every operation
-  log.md                 # Append-only chronological record
+  log.jsonl                 # Append-only chronological record
   overview.md            # High-level synthesis across all domains
 scripts/
   convert.py             # Docling-based file converter (PDF, DOCX, PPTX, XLSX -> markdown)
@@ -52,7 +53,7 @@ Every wiki page has YAML frontmatter. Common fields:
 
 ```yaml
 ---
-type: source | entity | concept | comparison | overview
+type: source | entity | concept | comparison | howto | overview
 title: Human-readable title
 domain: music-theory | technology | consulting | self-improvement | raw-notes
 tags: [lowercase-hyphenated-tags]
@@ -85,6 +86,11 @@ source_count: 0
 **Comparison** (`wiki/comparisons/`):
 ```yaml
 items: [item-a, item-b]
+```
+
+**Howto** (`wiki/howtos/`):
+```yaml
+theme: cli-tools | mac | git | obsidian  # Cluster tag — reuse existing, add as needed
 ```
 
 ## Page Templates
@@ -173,6 +179,30 @@ When to choose each option.
 - [[source-2]]
 ```
 
+### Howto Page
+
+```markdown
+Brief description of what this guide covers and when you'd need it.
+
+## Steps
+
+1. First step
+   ```bash
+   command example
+   ```
+2. Second step
+3. Third step
+
+## Notes
+
+- Gotchas, alternatives, or edge cases
+
+## Related
+
+- [[related-howto]] — related guide
+- [[related-concept]] — underlying concept
+```
+
 ## Operations
 
 ### Ingest
@@ -192,7 +222,7 @@ When the user adds a new source to `raw/` and asks you to process it:
 7. Add cross-references in both directions between related pages
 8. Update `wiki/index.md` with new entries
 9. Update `wiki/overview.md` if the source meaningfully changes the big picture
-10. Append to `wiki/log.md`
+10. Append to `wiki/log.jsonl`
 
 ### Query
 
@@ -202,7 +232,7 @@ When the user asks a question:
 2. Read the relevant wiki pages
 3. Synthesize an answer with `[[wikilinks]]` to sources
 4. If the answer is substantial and reusable, offer to file it as a new wiki page
-5. If filed, update `wiki/index.md` and append to `wiki/log.md`
+5. If filed, update `wiki/index.md` and append to `wiki/log.jsonl`
 
 ### Delete
 
@@ -216,7 +246,7 @@ When the user wants to remove a source from the wiki:
 6. Delete the raw source file from `raw/` (and its converted `.md` if applicable)
 7. Remove deleted pages from `wiki/index.md` and update counts
 8. Update `wiki/overview.md` if the deletion meaningfully changes the big picture
-9. Append a `delete` operation to `wiki/log.md`
+9. Append a `delete` operation to `wiki/log.jsonl`
 
 ### Lint
 
@@ -231,7 +261,7 @@ When the user asks for a health check:
 1. **Never modify files in `raw/`.** The only exception is the Delete operation, which removes them entirely.
 2. **Always use `[[wikilinks]]`** for internal references.
 3. **Always update `wiki/index.md`** when creating or deleting pages.
-4. **Always append to `wiki/log.md`** after any operation.
+4. **Always append to `wiki/log.jsonl`** after any operation.
 5. **Cite sources.** Every factual claim must link to at least one source.
 6. **Check `wiki/index.md` for existing pages** before creating new ones.
 7. **Reuse existing tags** — check before inventing new ones.
@@ -243,8 +273,8 @@ When the user asks for a health check:
 
 ## Index Format
 
-`wiki/index.md` uses markdown tables with sections for Sources, Entities, Concepts, Comparisons. Each row has a wikilink plus key metadata. A summary line at the top shows total counts.
+`wiki/index.md` uses markdown tables with sections for Sources, Entities, Concepts, Comparisons, Howtos. Each row has a wikilink plus key metadata. A summary line at the top shows total counts.
 
 ## Log Format
 
-`wiki/log.md` is append-only. Format: `## [YYYY-MM-DD] operation | description` followed by affected pages as wikilinks. Operations: `ingest`, `query`, `lint`, `delete`, `update`, `create`.
+`wiki/log.jsonl` is append-only. Format: `## [YYYY-MM-DD] operation | description` followed by affected pages as wikilinks. Operations: `ingest`, `query`, `lint`, `delete`, `update`, `create`.

@@ -12,8 +12,9 @@ wiki/                    # LLM-generated pages — you own this entirely
   entities/              # People, orgs, tools, albums, books
   concepts/              # Ideas, theories, frameworks
   comparisons/           # Side-by-side analyses
+    howtos/                # Practical step-by-step guides
   index.md               # Content catalog — read this FIRST on every operation
-  log.md                 # Append-only chronological record
+  log.jsonl                 # Append-only chronological record
   overview.md            # High-level synthesis across all domains
 scripts/
   convert.py             # Docling-based file converter (PDF, DOCX, PPTX, XLSX -> markdown)
@@ -52,7 +53,7 @@ Every wiki page has YAML frontmatter. Common fields:
 
 ```yaml
 ---
-type: source | entity | concept | comparison | overview
+type: source | entity | concept | comparison | howto | overview
 title: Human-readable title
 domain: music-theory | technology | consulting | self-improvement | raw-notes
 tags: [lowercase-hyphenated-tags]
@@ -85,6 +86,11 @@ source_count: 0
 **Comparison** (`wiki/comparisons/`):
 ```yaml
 items: [item-a, item-b]    # What's being compared
+```
+
+**Howto** (`wiki/howtos/`):
+```yaml
+theme: cli-tools | mac | git | obsidian  # Cluster tag — reuse existing themes, add new ones as needed
 ```
 
 ## Page Templates
@@ -173,6 +179,30 @@ When to choose each option.
 - [[source-2]]
 ```
 
+### Howto Page
+
+```markdown
+Brief description of what this guide covers and when you'd need it.
+
+## Steps
+
+1. First step
+   ```bash
+   command example
+   ```
+2. Second step
+3. Third step
+
+## Notes
+
+- Gotchas, alternatives, or edge cases
+
+## Related
+
+- [[related-howto]] — related guide
+- [[related-concept]] — underlying concept
+```
+
 ## Operations
 
 ### Ingest
@@ -196,7 +226,7 @@ When the user adds a new source to `raw/` and asks you to process it:
 7. Add cross-references: link new pages to existing related pages, and update existing pages to link back
 8. Update `wiki/index.md` with new entries
 9. Update `wiki/overview.md` if the source meaningfully changes the big picture for its domain
-10. Append to `wiki/log.md`
+10. Append to `wiki/log.jsonl`
 
 ### Query
 
@@ -206,7 +236,7 @@ When the user asks a question:
 2. Read the relevant wiki pages
 3. Synthesize an answer with `[[wikilinks]]` to sources
 4. If the answer is substantial and reusable, ask the user if it should be filed as a new wiki page (concept, comparison, or entity)
-5. If filed, update `wiki/index.md` and append to `wiki/log.md`
+5. If filed, update `wiki/index.md` and append to `wiki/log.jsonl`
 
 ### Delete
 
@@ -227,7 +257,7 @@ When the user wants to remove a source from the wiki:
 6. Delete the raw source file from `raw/` (and its converted `.md` if applicable)
 7. Remove deleted pages from `wiki/index.md` and update counts
 8. Update `wiki/overview.md` if the deletion meaningfully changes the big picture
-9. Append a `delete` operation to `wiki/log.md`
+9. Append a `delete` operation to `wiki/log.jsonl`
 
 ### Lint
 
@@ -249,7 +279,7 @@ When the user asks for a health check:
 1. **Never modify files in `raw/`.** They are immutable source documents. The only exception is the Delete operation, which removes them entirely.
 2. **Always use `[[wikilinks]]`** for internal references, never markdown links.
 3. **Always update `wiki/index.md`** when creating or deleting pages.
-4. **Always append to `wiki/log.md`** after any operation.
+4. **Always append to `wiki/log.jsonl`** after any operation.
 5. **Cite sources.** Every factual claim on an entity or concept page must link to at least one source.
 6. **Check `wiki/index.md` for existing pages** before creating new ones. Don't create duplicates.
 7. **Check existing tags** in `wiki/index.md` before inventing new ones. Reuse when possible.
@@ -266,7 +296,7 @@ When the user asks for a health check:
 ```markdown
 # Wiki Index
 
-Total pages: N | Sources: N | Entities: N | Concepts: N | Comparisons: N
+Total pages: N | Sources: N | Entities: N | Concepts: N | Comparisons: N | Howtos: N
 
 ## Sources
 | Page | Author | Domain | Date | Status |
@@ -287,17 +317,28 @@ Total pages: N | Sources: N | Entities: N | Concepts: N | Comparisons: N
 | Page | Domain | Items |
 |------|--------|-------|
 | [[comparison-name]] | domain | A vs B |
+
+## Howtos
+| Page | Theme | Domain |
+|------|-------|--------|
+| [[howto-name]] | cli-tools | domain |
 ```
 
 ## Log Format
 
-`wiki/log.md` is append-only. Each entry:
+`wiki/log.jsonl` is append-only. One JSON object per line:
 
-```markdown
-## [YYYY-MM-DD] operation | description
-
-- Affected: [[page-1]], [[page-2]], [[page-3]]
-- Details of what changed
+```json
+{"date":"YYYY-MM-DD","op":"ingest","desc":"Short description","source":"source-slug","created":["page-a","page-b"],"updated":["page-c"]}
 ```
 
-Operations: `ingest`, `query`, `lint`, `delete`, `update`, `create`.
+Fields:
+- `date` — ISO date
+- `op` — one of: `ingest`, `query`, `lint`, `delete`, `update`, `create`
+- `desc` — short description of what happened
+- `source` — source slug (ingest/delete only, omit otherwise)
+- `created` — list of page slugs created (omit if empty)
+- `updated` — list of page slugs updated (omit if empty)
+- `deleted` — list of page slugs deleted (omit if empty)
+
+Query examples: `jq -s '.[-5:]' wiki/log.jsonl` (last 5 entries), `jq 'select(.op=="ingest")' wiki/log.jsonl` (all ingests).

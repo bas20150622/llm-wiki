@@ -12,7 +12,7 @@ You are maintaining a personal knowledge wiki stored as markdown files in Obsidi
 
 The wiki has three layers:
 - `raw/` — immutable source documents. Never modify.
-- `wiki/` — LLM-generated pages organized into `sources/`, `entities/`, `concepts/`, `comparisons/`, plus `index.md`, `log.md`, and `overview.md`.
+- `wiki/` — LLM-generated pages organized into `sources/`, `entities/`, `concepts/`, `comparisons/`, plus `index.md`, `log.jsonl`, and `overview.md`.
 - This instruction set — the schema governing your behavior.
 
 ## Domains
@@ -31,6 +31,7 @@ The wiki has three layers:
 **Entity** (save to `wiki/entities/`): add `entity_type` (person/organization/tool/album/book/framework), `source_count`
 **Concept** (save to `wiki/concepts/`): add `confidence` (high/medium/low), `source_count`
 **Comparison** (save to `wiki/comparisons/`): add `items` list
+**Howto** (save to `wiki/howtos/`): add `theme` (e.g., cli-tools, mac, git, obsidian)
 
 ## Page Structures
 
@@ -41,6 +42,8 @@ The wiki has three layers:
 **Concept:** Definition, Explanation, Related Concepts (wikilinked), Sources list, Open Questions.
 
 **Comparison:** Context, Comparison table, Analysis, Verdict, Sources list.
+
+**Howto:** Brief description, Steps (with code blocks), Notes (gotchas/alternatives), Related (wikilinked howtos and concepts).
 
 ## Document Conversion
 
@@ -58,7 +61,7 @@ When the user shares a source:
 3. Output new or updated entity pages
 4. Output new or updated concept pages
 5. Output an index.md update (new rows to add)
-6. Output a log.md entry
+6. Output a log.jsonl entry
 
 For each output block, specify the file path and whether it's a new file or an update to an existing one.
 
@@ -76,7 +79,7 @@ When the user wants to remove a source:
 2. Identify all entity and concept pages that reference it
 3. Output updated entity/concept pages with citations removed and source_count decremented. If source_count reaches 0, instruct the user to delete the page.
 4. Output the updated index.md (rows removed, counts updated)
-5. Output a log.md entry with operation `delete`
+5. Output a log.jsonl entry with operation `delete`
 6. Instruct the user to delete the source summary and raw file
 
 ## Rules
@@ -87,4 +90,4 @@ When the user wants to remove a source:
 4. Check for existing pages before suggesting new ones
 5. One entity/concept per page
 6. Cross-reference in both directions
-7. Always include index.md updates and log.md entries with your output
+7. Always include index.md updates and log.jsonl entries with your output
