@@ -1,7 +1,11 @@
 .venv/
 __pycache__/
-wiki/
-raw/
+raw/**
+!raw/**/
+!raw/**/.gitkeep
+wiki/**
+!wiki/**/
+!wiki/**/.gitkeep
 .obsidian/workspace.json
 .obsidian/workspace-mobile.json
 .obsidian/plugins/
