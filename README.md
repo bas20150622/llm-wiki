@@ -61,6 +61,18 @@ claude
 
 Claude Code reads `CLAUDE.md` automatically. No additional setup needed.
 
+**Recommended model: Sonnet 4.6.** Wiki operations (ingest, query, delete, lint) are structured tasks that Sonnet handles well at 60% of the cost of Opus. Opus is overkill for most wiki work -- the gains are marginal outside of dense source ingestion and contradiction detection during lint.
+
+To default to Sonnet 4.6 for this project, create `.claude/settings.local.json`:
+
+```json
+{
+  "model": "claude-sonnet-4-6"
+}
+```
+
+This takes effect on the next session start. You can override per-session with `/model` or `--model` on the CLI.
+
 ### OpenAI Codex CLI
 
 ```bash
