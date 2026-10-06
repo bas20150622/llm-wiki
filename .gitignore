@@ -1,14 +1,11 @@
 .venv/
 __pycache__/
-raw/**
-!raw/**/
-!raw/**/.gitkeep
-wiki/**
-!wiki/**/
-!wiki/**/.gitkeep
-.obsidian/workspace.json
-.obsidian/workspace-mobile.json
-.obsidian/plugins/
-.obsidian/core-plugins-migration.json
-.obsidian/hotkeys.json
+*.egg-info/
+.pytest_cache/
 .DS_Store
+.claude/settings.local.json
+
+# Backstop: wiki content never belongs in the engine repository.
+raw/
+wiki/
+.obsidian/

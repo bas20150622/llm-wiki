@@ -1,0 +1,19 @@
+# Wiki Identity
+
+```yaml
+wiki: $name
+user_id: $user_id
+schema_version: $schema_version
+```
+
+This directory is the **$name** wiki: $scope
+
+The shared schema is imported below. Read it fully before any operation.
+
+@$schema_import
+
+## Separation
+
+- Other wikis exist. Never read, search, reference, link, or mention their content or location.
+- Operate only on `raw/` and `wiki/` inside this directory.
+- The only engine commands you may run are `llm-wiki convert` and `llm-wiki lint`.

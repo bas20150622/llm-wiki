@@ -6,137 +6,140 @@ Instead of RAG (re-deriving knowledge every query), the LLM incrementally builds
 
 ## How It Works
 
-**Three layers:**
+This repository is the **engine**: the shared schema and the `llm-wiki` command. It holds no wiki content. Each **wiki** is a separate directory, anywhere on disk, that the engine works on. Wikis are strictly separated from each other.
+
+```
+~/tools/llm-wiki/                 ENGINE (this repo): schema + llm-wiki command
+~/.config/llm-wiki/wikis.toml     REGISTRY: wiki name -> directory (only the command reads it)
+
+<wiki>/                           WIKI INSTANCE (one per wiki, e.g. work and private)
+  wiki.toml                       identity: name, user_id, schema_version
+  CLAUDE.md, AGENTS.md            identity + scope; CLAUDE.md imports the engine schema
+  .claude/settings.json           permission rules that block the other wikis (managed)
+  raw/                            your sources (immutable)
+  wiki/                           the Obsidian vault: LLM pages + your notes
+```
+
+**Layers in each wiki:**
 
 | Layer | Owner | Purpose |
 |-------|-------|---------|
-| `raw/` | You | Immutable source documents — articles, papers, notes, clippings |
-| `wiki/` | LLM | Generated pages — summaries, entities, concepts, comparisons |
-| Schema files | Both | CLAUDE.md / AGENTS.md / chatgpt-instructions.md govern LLM behavior |
+| `raw/` | You | Immutable source documents — articles, papers, clippings |
+| `wiki/` | LLM | Generated pages — summaries, entities, concepts, comparisons, howtos |
+| `wiki/notes/` | You | Your own Zettelkasten notes — the LLM links to them but never writes them |
 
-**Three operations:**
+**Operations** (run inside a wiki session):
 
-- **Ingest** — drop a source in `raw/`, tell the LLM to process it. It writes a summary, creates/updates entity and concept pages, maintains cross-references, updates the index.
-- **Query** — ask questions against the wiki. The LLM reads the index, finds relevant pages, synthesizes an answer. Good answers get filed back as new pages.
-- **Delete** — remove a source and cascade the cleanup. The LLM deletes the source summary, removes citations from entity/concept pages, decrements source counts, and deletes any pages that have no remaining sources.
-- **Lint** — health-check the wiki for contradictions, orphan pages, stale claims, missing cross-references.
+- **Ingest** — drop a source in `raw/`, tell the LLM to process it. It writes a summary, creates/updates entity and concept pages, maintains cross-references, links your related notes, updates the index.
+- **Query** — ask questions against the wiki. The LLM keeps your notes' position separate from what sources claim. Good answers get filed back as new pages.
+- **Delete** — remove a source and cascade the cleanup through entity and concept pages. Notes are never deleted.
+- **Lint** — `llm-wiki lint` runs the mechanical checks; the LLM adds judgment checks such as contradictions and missing concepts.
 
-## Prerequisites
+## Separation
 
-- [uv](https://docs.astral.sh/uv/) (Python package manager)
-- Python 3.12+
+Each session works on one wiki and cannot reach the others:
+
+- **Storage:** the engine, each wiki, and the registry live in different places. Work content can stay on employer storage and private content on personal storage.
+- **Session scope:** `llm-wiki open <name>` starts the agent inside that wiki with `LLM_WIKI_ACTIVE=<name>` set. Inside such a session, `llm-wiki convert` and `llm-wiki lint` refuse to touch any other wiki, and the registry commands (`open`, `list`, `new`, `register`, `unregister`, `sync-permissions`) refuse to run at all.
+- **Permissions:** each wiki's `.claude/settings.json` denies Claude Code's file tools access to every other registered wiki and to the registry, and denies the registry commands. `llm-wiki sync-permissions` rewrites these rules; `new`, `register`, and `unregister` run it for you. Other rules you add to the file are kept.
+- **Schema rules:** the shared schema tells the LLM never to read, link, or mention another wiki.
+- **Limit:** permission rules cover Claude Code's file tools, not arbitrary shell commands. A shell command such as `cat` on another wiki's path is still possible if you approve it.
 
 ## Installation
 
-### Python environment (for document conversion)
+Prerequisites: [uv](https://docs.astral.sh/uv/) and Python 3.12+.
 
 ```bash
-cd llm-wiki
-uv venv .venv --python 3.12
-uv pip install --python .venv/bin/python docling --extra-index-url https://download.pytorch.org/whl/cpu --index-strategy unsafe-best-match
+git clone git@github.com:bas20150622/llm-wiki.git ~/tools/llm-wiki
+uv tool install --editable ~/tools/llm-wiki
 ```
 
-This installs [Docling](https://github.com/DS4SD/docling) (IBM's ML-based document converter) with CPU-only PyTorch. Supports PDF, DOCX, PPTX, and XLSX.
+This puts `llm-wiki` on your PATH (in `~/.local/bin`). The install must be editable: the command reads the schema from the checkout. It installs [Docling](https://github.com/DS4SD/docling) for document conversion. On Linux, add `--extra-index-url https://download.pytorch.org/whl/cpu --index-strategy unsafe-best-match` to get CPU-only PyTorch.
 
-To convert a file:
+Updating the engine for every wiki at once:
 ```bash
-.venv/bin/python scripts/convert.py raw/my-report.pdf
+cd ~/tools/llm-wiki && git pull
 ```
 
-This creates `raw/my-report.md` alongside the original. The LLM reads the markdown version.
+## Usage
 
-### Obsidian (required)
+```bash
+llm-wiki new work ~/Work/wiki --scope "Client work and technology" \
+  --topic technology="Software and architecture" --topic consulting="Methods and industry analysis"
+llm-wiki register private ~/Personal/wiki          # an existing wiki
+llm-wiki list
 
-1. Open Obsidian
-2. "Open folder as vault" -> select the `llm-wiki/` directory
-3. Install the **Dataview** plugin (Settings -> Community plugins -> Browse -> "Dataview")
-4. Recommended: install **Obsidian Web Clipper** browser extension for capturing articles
+llm-wiki open work                      # start Claude Code inside the wiki
+llm-wiki open private --continue        # resume the last session in that wiki
+llm-wiki open --agent codex work        # start Codex instead
+
+# Inside a session (the LLM runs these):
+llm-wiki convert raw/report.pdf         # PDF, DOCX, PPTX, XLSX -> markdown
+llm-wiki lint                           # mechanical health checks (--json for machine output)
+```
+
+Run one session per wiki. Changing directory inside a session does not switch wikis; start a new session with `llm-wiki open`.
+
+### Document conversion
+
+`llm-wiki convert raw/my-report.pdf` creates `raw/my-report.md` next to the original. The converted file starts with provenance frontmatter (`converted_from`, `source_sha256`, `converted_at`, `converted_by`) and has `<!-- page N -->`, `<!-- slide N -->`, or `<!-- sheet N: Name -->` markers so claims can be traced into the original. DOCX has no fixed pages and gets no markers.
+
+Re-running is safe: the command skips a file whose `.md` matches the original's SHA-256, and refuses (exit code 2) when the original changed or the `.md` was not made by it (hand-written, or a name clash such as `report.pdf` and `report.docx`). `--force` overwrites; check for hand edits first.
+
+### Obsidian
+
+Each wiki's `wiki/` directory is its own vault: "Open folder as vault" and select it. Keep one vault per wiki. The **Templates** core plugin points at `templates/`; insert `templates/note.md` to start a note. Recommended: the **Dataview** plugin and the **Obsidian Web Clipper** browser extension.
 
 ### Claude Code
 
-```bash
-cd llm-wiki
-claude
-```
+`llm-wiki open <name>` is the normal way in. Claude Code loads the wiki's `CLAUDE.md`, which imports `schema/CLAUDE.md` from the engine; it asks once per wiki to approve that external import. Each wiki's `.claude/settings.local.json` sets the model to `sonnet` (the current default Sonnet); change it per wiki or override with `/model`.
 
-Claude Code reads `CLAUDE.md` automatically. No additional setup needed.
+A session in the engine repository is for developing the engine (see `CLAUDE.md` there). It refuses wiki operations.
 
-**Recommended model: Sonnet 4.6.** Wiki operations (ingest, query, delete, lint) are structured tasks that Sonnet handles well at 60% of the cost of Opus. Opus is overkill for most wiki work -- the gains are marginal outside of dense source ingestion and contradiction detection during lint.
+### Codex
 
-To default to Sonnet 4.6 for this project, create `.claude/settings.local.json`:
-
-```json
-{
-  "model": "claude-sonnet-4-6"
-}
-```
-
-This takes effect on the next session start. You can override per-session with `/model` or `--model` on the CLI.
-
-### OpenAI Codex CLI
-
-```bash
-cd llm-wiki
-codex
-```
-
-Codex reads `AGENTS.md` automatically. No additional setup needed.
+`llm-wiki open --agent codex <name>`. Codex reads the wiki's `AGENTS.md`, which points it at `schema/AGENTS.md` (identical to `schema/CLAUDE.md`).
 
 ### ChatGPT (web UI)
 
-1. Open `chatgpt-instructions.md`
-2. Copy everything below the `---` line
-3. Paste into one of:
-   - **Custom Instructions** (Settings -> Personalization -> Custom Instructions)
-   - **Custom GPT** system prompt (if creating a dedicated GPT)
-   - **Start of conversation** (paste at the top of a new chat)
+1. Copy everything below the `---` line in `schema/chatgpt-instructions.md`
+2. Paste into Custom Instructions, a Custom GPT system prompt, or the start of a conversation
+3. Use a separate ChatGPT Project per wiki, so chat history and memory don't mix them
 
-ChatGPT cannot write files directly — it outputs markdown blocks that you copy into the wiki.
+ChatGPT cannot write files — it outputs markdown blocks that you copy into the wiki.
 
-## Quick Start
+## Topics
 
-1. Save an article or note as a markdown file in `raw/` (Obsidian Web Clipper works well for this)
-2. Tell the LLM: "Ingest raw/my-article.md"
-3. The LLM reads it, discusses key points with you, then creates/updates wiki pages
-4. Browse the results in Obsidian — check the graph view to see connections
+Each wiki has its own topic registry: the `## Topics` table at the top of `wiki/index.md`. Every page has one `topic`; tags cover anything cross-cutting. When a new source fits no registered topic, the LLM proposes one and adds it only after you approve. You can also ask directly ("add a topic for data governance").
 
-## Domains
-
-This wiki covers five domains:
-
-- **Music Theory** — harmony, rhythm, composition, genres, artists
-- **Technology** — software, AI/ML, tools, frameworks, research
-- **Consulting** — frameworks, methodologies, industry analysis
-- **Self-Improvement** — psychology, habits, health, productivity
-- **Raw Notes** — anything that doesn't fit the above
-
-## Adding a New Domain
-
-The wiki ships with five domains, but you can add more. Two files need updating:
-
-1. **Schema files** — add the new domain to the `## Domains` list in `CLAUDE.md`, `AGENTS.md`, and/or `chatgpt-instructions.md`:
-   ```yaml
-   - `my-new-domain` — short description of what it covers
-   ```
-
-2. **Overview** — add a section header in `wiki/overview.md`:
-   ```markdown
-   ## My New Domain
-
-   No content yet.
-   ```
-
-That's it. No directory or template changes needed — all page types, frontmatter, and workflows work across domains. Sources, entities, and concepts from different domains live in the same directories and cross-reference each other naturally through wikilinks.
-
-Use the `domain` frontmatter field to filter by domain in Dataview queries:
+Filter by topic in Dataview:
 ```
-TABLE title, source_count FROM "wiki/concepts" WHERE domain = "my-new-domain"
+TABLE title, source_count FROM "concepts" WHERE topic = "technology"
 ```
 
-## Tips
+## Notes (Zettelkasten)
 
-- **Obsidian Web Clipper** converts web articles to markdown — great for quickly adding sources
-- **Download images locally**: in Obsidian Settings -> Files and links, attachment folder is already set to `raw/assets/`
-- **Graph view** shows wiki structure — hubs, orphans, clusters
-- **Dataview queries** work on all frontmatter (e.g., list all concepts sorted by source count)
-- The wiki is a git repo — you get version history for free
+`wiki/notes/` is where your own thinking goes: one idea per note, in your own words, about 250 words at most. Every other page is the LLM's synthesis of sources; notes are your position.
+
+- Start a note from `templates/note.md`. It sets `type: note` and `generated.by` to your user id.
+- End each note with `## Links`, giving a reason for every link (`- [[page]] — why this connects`).
+- Use `continues: "[[other-note]]"` in frontmatter to branch from an earlier note.
+- The LLM never writes or edits a note. It links concept pages to your notes, tells you when a source contradicts one, and keeps "your note says" separate from "sources say".
+- Notes need no source citations.
+
+## Provenance
+
+The schema borrows provenance fields from Google's [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) (OKF), without adopting the rest of it. The wiki keeps `[[wikilinks]]` and `log.jsonl`, where OKF uses markdown links and a prose `log.md`.
+
+- `generated` — which tool and model wrote the page, and when (your user id for notes)
+- `stale_after` — optional date after which time-sensitive claims need a recheck
+- `native_asset` on source pages — the original PDF, DOCX, PPTX, or XLSX of a converted source
+- `sources` on entity and concept pages — every cited source, checked against `source_count`
+
+## Schema versions
+
+Each wiki's `wiki.toml` declares the `schema_version` it follows. `llm-wiki open` and `llm-wiki lint` warn when it differs from the engine. `schema/CHANGELOG.md` lists each version's migration steps.
+
+## Development
+
+See `CLAUDE.md`. In short: `uv tool install --editable . --with pytest`, then `"$(uv tool dir)/llm-wiki/bin/python" -m pytest -q`.
