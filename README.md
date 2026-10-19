@@ -17,7 +17,8 @@ This repository is the **engine**: the shared schema and the `llm-wiki` command.
   CLAUDE.md, AGENTS.md            identity + scope; CLAUDE.md imports the engine schema
   .claude/settings.json           permission rules that block the other wikis (managed)
   raw/                            your sources (immutable)
-  wiki/                           the Obsidian vault: LLM pages + your notes
+  .obsidian/                      Obsidian config: the wiki root is the vault
+  wiki/                           LLM pages + your notes
 ```
 
 **Layers in each wiki:**
@@ -88,7 +89,9 @@ Re-running is safe: the command skips a file whose `.md` matches the original's 
 
 ### Obsidian
 
-Each wiki's `wiki/` directory is its own vault: "Open folder as vault" and select it. Keep one vault per wiki. The **Templates** core plugin points at `templates/`; insert `templates/note.md` to start a note. Recommended: the **Dataview** plugin and the **Obsidian Web Clipper** browser extension.
+Each wiki's root directory is its own vault: "Open folder as vault" and select it. Obsidian names the vault after that folder, so give each wiki root a distinct name. Keep one vault per wiki. The vault config excludes `raw/`, `CLAUDE.md`, and `AGENTS.md` from search and the graph, creates new notes in `wiki/notes/`, and points the **Templates** core plugin at `wiki/templates/`; insert `note.md` to start a note.
+
+Wikis created before this change keep their config in `wiki/.obsidian/`. To move one: close its vault, move `wiki/.obsidian/` to the wiki root, set Templates > Template folder to `wiki/templates`, then open the wiki root as the vault. Recommended: the **Dataview** plugin and the **Obsidian Web Clipper** browser extension.
 
 ### Claude Code
 

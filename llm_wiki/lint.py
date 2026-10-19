@@ -26,7 +26,7 @@ KIND_TYPE = {
 REQUIRED_FIELDS = ("type", "title", "topic", "tags", "last_updated")
 CROSS_LINKED_KINDS = {"entities", "concepts", "comparisons", "howtos"}
 NOTE_WORD_LIMIT = 250
-SKIP_IN_WIKI = {".obsidian", "templates"}
+SKIP_IN_WIKI = {".obsidian", "templates"}  # ".obsidian" here only for wikis created before the vault moved to the root
 
 FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n?(.*)\Z", re.DOTALL)
 WIKILINK = re.compile(r"\[\[([^\]]*)\]\]")
@@ -290,7 +290,7 @@ class Linter:
             if not path.is_file() or rel.parts[0] in SKIP_IN_WIKI or path.name.startswith("."):
                 continue
             if path.suffix not in (".md", ".jsonl"):
-                self.add("warning", "stray-files", rel.as_posix(), "non-markdown file inside the vault")
+                self.add("warning", "stray-files", rel.as_posix(), "non-markdown file inside wiki/")
 
     def check_log(self) -> None:
         log = self.wiki / "log.jsonl"

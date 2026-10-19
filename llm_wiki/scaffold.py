@@ -123,4 +123,4 @@ def create_wiki(root: Path, name: str, scope: str, user_id: str, topics: dict[st
     entry = {"date": date.today().isoformat(), "op": "create", "desc": f"Created wiki '{name}' with {topic_text}", "created": ["index", "overview"]}
     (wiki / "log.jsonl").write_text(json.dumps(entry) + "\n", encoding="utf-8")
     (wiki / "templates" / "note.md").write_text(render("note.md", user_id=user_id), encoding="utf-8")
-    shutil.copytree(TEMPLATES / "obsidian", wiki / ".obsidian")
+    shutil.copytree(TEMPLATES / "obsidian", root / ".obsidian")

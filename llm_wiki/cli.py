@@ -75,7 +75,7 @@ def cmd_new(args) -> None:
     sync_permissions(wikis)
     print(f"Created wiki '{args.name}' at {root}")
     print(f"Open it with: llm-wiki open {args.name}")
-    print(f"Open {root / 'wiki'} as an Obsidian vault.")
+    print(f"Open {root} as an Obsidian vault.")
 
 
 def cmd_register(args) -> None:

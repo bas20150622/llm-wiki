@@ -1,1 +1,5 @@
-{}
+{
+  "newFileLocation": "folder",
+  "newFileFolderPath": "wiki/notes",
+  "userIgnoreFilters": ["raw/", "CLAUDE.md", "AGENTS.md"]
+}

@@ -29,7 +29,7 @@ This schema is shared by several strictly separated wikis. The engine (this sche
   .claude/settings.json  # Permission rules managed by llm-wiki (do not edit the managed rules)
   raw/                   # Source documents — NEVER modify these
     assets/              # Images referenced by sources
-  wiki/                  # The Obsidian vault
+  wiki/                  # Wiki pages (the wiki root is the Obsidian vault)
     sources/             # One summary per raw document (LLM-written)
     entities/            # People, orgs, tools, albums, books (LLM-written)
     concepts/            # Ideas, theories, frameworks (LLM-written)
@@ -360,7 +360,7 @@ When the user asks for a health check:
    ```bash
    llm-wiki lint --json
    ```
-   They cover: frontmatter fields, broken and empty `[[wikilinks]]`, links pointing outside the wiki, topics missing from the registry and registry page counts, orphan pages, one-way links between entity/concept/comparison/howto pages, `source_count` vs the Sources section vs `sources` frontmatter vs body citations, missing `source:`/`native_asset:` targets in `raw/`, stale conversions (`source_sha256` mismatch) and converted sources lacking `native_asset`, `stale_after` dates in the past, pages missing `generated`, index rows vs pages and the total count, notes with no links / over 250 words / not written by the user, non-markdown files in the vault, and invalid `log.jsonl` lines. Do not repeat these checks by hand.
+   They cover: frontmatter fields, broken and empty `[[wikilinks]]`, links pointing outside the wiki, topics missing from the registry and registry page counts, orphan pages, one-way links between entity/concept/comparison/howto pages, `source_count` vs the Sources section vs `sources` frontmatter vs body citations, missing `source:`/`native_asset:` targets in `raw/`, stale conversions (`source_sha256` mismatch) and converted sources lacking `native_asset`, `stale_after` dates in the past, pages missing `generated`, index rows vs pages and the total count, notes with no links / over 250 words / not written by the user, non-markdown files in `wiki/`, and invalid `log.jsonl` lines. Do not repeat these checks by hand.
 2. Read `wiki/index.md` and the wiki pages (skip `wiki/templates/`) for the judgment checks the command cannot do:
    - Contradictions between pages
    - Stale claims superseded by newer sources

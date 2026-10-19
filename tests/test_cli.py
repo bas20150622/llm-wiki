@@ -22,8 +22,14 @@ def test_new_creates_and_registers_wiki(tmp_path, capsys):
     assert json.loads((root / ".claude" / "settings.local.json").read_text()) == {"model": "sonnet"}
     index = (root / "wiki" / "index.md").read_text()
     assert "| tech | Technology | 0 |" in index and "| consulting | consulting | 0 |" in index
-    for sub in ("sources", "entities", "concepts", "comparisons", "howtos", "notes", "templates", ".obsidian"):
+    for sub in ("sources", "entities", "concepts", "comparisons", "howtos", "notes", "templates"):
         assert (root / "wiki" / sub).is_dir()
+    assert not (root / "wiki" / ".obsidian").exists()
+    obsidian = root / ".obsidian"
+    assert json.loads((obsidian / "templates.json").read_text()) == {"folder": "wiki/templates"}
+    app = json.loads((obsidian / "app.json").read_text())
+    assert app["newFileFolderPath"] == "wiki/notes" and "raw/" in app["userIgnoreFilters"]
+    assert (root / "wiki" / "templates" / "note.md").is_file()
     assert "human:bas" in (root / "wiki" / "templates" / "note.md").read_text()
 
 
