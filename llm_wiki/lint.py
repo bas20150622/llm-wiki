@@ -8,7 +8,7 @@ import hashlib
 import json
 import re
 from dataclasses import asdict, dataclass, field
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import yaml
@@ -55,8 +55,15 @@ def link_target(raw_link: str) -> str:
     return raw_link.split("|")[0].split("#")[0].strip()
 
 
-def parse_markdown(path: Path) -> tuple[dict | None, str]:
-    text = path.read_text(encoding="utf-8")
+def read_text(path: Path) -> str | None:
+    """The file's text, or None when it is not valid UTF-8."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def parse_markdown(text: str) -> tuple[dict | None, str]:
     match = FRONTMATTER.match(text)
     if not match:
         return None, text
@@ -96,11 +103,21 @@ class Linter:
     def add(self, severity: str, check: str, page: str, message: str) -> None:
         self.findings.append(Finding(severity, check, page, message))
 
+    def read(self, path: Path, page: str) -> str | None:
+        """Read a wiki file, reporting a finding and returning None when it is not valid UTF-8."""
+        text = read_text(path)
+        if text is None:
+            self.add("error", "encoding", page, "file is not valid UTF-8")
+        return text
+
     def run(self) -> list[Finding]:
         self.check_identity()
         self.load_pages()
-        index_text = (self.wiki / "index.md").read_text(encoding="utf-8") if (self.wiki / "index.md").exists() else ""
-        if not index_text:
+        index_path = self.wiki / "index.md"
+        index_text = self.read(index_path, "index") if index_path.exists() else ""
+        if index_text is None:
+            index_text = ""
+        elif not index_text:
             self.add("error", "index", "index", "wiki/index.md is missing")
         self.check_topics(index_text)
         self.check_links(index_text)
@@ -123,18 +140,20 @@ class Linter:
         if warning:
             self.add("warning", "identity", "wiki.toml", warning)
         claude_md = self.root / "CLAUDE.md"
-        if not claude_md.exists() or f"wiki: {identity.get('name')}" not in claude_md.read_text(encoding="utf-8"):
+        declared = self.read(claude_md, "CLAUDE.md") if claude_md.exists() else None
+        if declared is None or f"wiki: {identity.get('name')}" not in declared:
             self.add("warning", "identity", "CLAUDE.md", f"CLAUDE.md does not declare `wiki: {identity.get('name')}`")
 
     def load_pages(self) -> None:
         for kind in KIND_TYPE:
             for path in sorted((self.wiki / kind).glob("*.md")):
-                meta, body = parse_markdown(path)
                 slug = path.stem
+                text = self.read(path, slug)
+                meta, body = parse_markdown(text) if text is not None else ({}, "")
                 if meta is None:
                     self.add("error", "frontmatter", slug, "missing or unparseable YAML frontmatter")
                     meta = {}
-                links = {link_target(l) for l in WIKILINK.findall(path.read_text(encoding="utf-8"))}
+                links = {link_target(l) for l in WIKILINK.findall(text or "")}
                 self.pages[slug] = Page(slug, kind, path, meta, body, links)
                 missing = [f for f in REQUIRED_FIELDS if f not in meta]
                 if meta and missing:
@@ -155,6 +174,9 @@ class Linter:
         counts: dict[str, int] = {}
         for page in self.pages.values():
             topic = page.meta.get("topic")
+            if isinstance(topic, (list, dict)):
+                self.add("error", "topics", page.slug, "topic must be a single name, not a list or mapping")
+                continue
             counts[topic] = counts.get(topic, 0) + 1
             if topic not in registry:
                 self.add("error", "topics", page.slug, f"topic '{topic}' is not in the registry")
@@ -171,8 +193,9 @@ class Linter:
         overview = self.wiki / "overview.md"
         sources = [(p.slug, p.links) for p in self.pages.values()]
         sources.append(("index", {link_target(l) for l in WIKILINK.findall(index_text)}))
-        if overview.exists():
-            sources.append(("overview", {link_target(l) for l in WIKILINK.findall(overview.read_text(encoding="utf-8"))}))
+        overview_text = self.read(overview, "overview") if overview.exists() else None
+        if overview_text is not None:
+            sources.append(("overview", {link_target(l) for l in WIKILINK.findall(overview_text)}))
         for slug, links in sources:
             # Missing raw/ targets named in a source page's frontmatter are reported once, by check_raw_targets.
             page = self.pages.get(slug)
@@ -233,11 +256,16 @@ class Linter:
                 for target in frontmatter_links(page.meta.get("source")):
                     referenced[target] = page
         for md in sorted((self.root / "raw").rglob("*.md")):
-            meta, _ = parse_markdown(md)
+            text = read_text(md)
+            meta, _ = parse_markdown(text) if text is not None else (None, "")
             if not meta or meta.get("type") != "converted-source":
                 continue
             rel = md.relative_to(self.root).as_posix()
-            native = md.with_name(str(meta.get("converted_from")))
+            name = meta.get("converted_from")
+            if not isinstance(name, str) or not name or Path(name).name != name:
+                self.add("error", "provenance", rel, f"converted_from must be a file name, got {name!r}")
+                continue
+            native = md.with_name(name)
             if not native.exists():
                 self.add("error", "provenance", rel, f"native file {native.name} is missing")
             elif hashlib.sha256(native.read_bytes()).hexdigest() != meta.get("source_sha256"):
@@ -251,8 +279,13 @@ class Linter:
         missing_generated = []
         for page in self.pages.values():
             stale = page.meta.get("stale_after")
-            if isinstance(stale, date) and stale < today:
-                self.add("warning", "stale", page.slug, f"stale_after {stale} has passed")
+            if isinstance(stale, datetime):
+                stale = stale.date()
+            if isinstance(stale, date):
+                if stale < today:
+                    self.add("warning", "stale", page.slug, f"stale_after {stale} has passed")
+            elif stale is not None:
+                self.add("warning", "stale", page.slug, f"stale_after {stale!r} is not a YYYY-MM-DD date and is ignored")
             if "generated" not in page.meta:
                 missing_generated.append(page.slug)
         if missing_generated:
@@ -280,7 +313,8 @@ class Linter:
             words = len(page.body.split())
             if words > NOTE_WORD_LIMIT:
                 self.add("info", "notes", page.slug, f"{words} words; may hold more than one idea")
-            author = (page.meta.get("generated") or {}).get("by", "")
+            generated = page.meta.get("generated")
+            author = generated.get("by", "") if isinstance(generated, dict) else ""
             if not str(author).startswith("human:"):
                 self.add("info", "notes", page.slug, f"drafted by {author or 'unknown'}, not yet rewritten by the user")
 
@@ -297,7 +331,10 @@ class Linter:
         if not log.exists():
             self.add("error", "log", "log.jsonl", "wiki/log.jsonl is missing")
             return
-        for number, line in enumerate(log.read_text(encoding="utf-8").splitlines(), start=1):
+        text = self.read(log, "log.jsonl")
+        if text is None:
+            return
+        for number, line in enumerate(text.splitlines(), start=1):
             try:
                 entry = json.loads(line)
             except json.JSONDecodeError:

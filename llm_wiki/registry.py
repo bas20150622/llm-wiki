@@ -66,7 +66,10 @@ def read_identity(root: Path) -> dict:
     path = root / IDENTITY_FILE
     if not path.is_file():
         raise WikiError(f"{root} is not a wiki: {IDENTITY_FILE} not found.")
-    return tomllib.loads(path.read_text(encoding="utf-8"))
+    try:
+        return tomllib.loads(path.read_text(encoding="utf-8"))
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
+        raise WikiError(f"{path} is not valid UTF-8 TOML: {error}") from error
 
 
 def find_wiki_root(start: Path) -> Path:

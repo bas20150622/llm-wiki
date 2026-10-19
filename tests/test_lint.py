@@ -1,3 +1,5 @@
+import pytest
+
 from llm_wiki.lint import lint
 
 from conftest import write_page
@@ -135,3 +137,71 @@ def test_bad_log_line(make_wiki):
     with (root / "wiki" / "log.jsonl").open("a") as log:
         log.write("not json\n")
     assert ("log", "log.jsonl:2") in checks(lint(root), "error")
+
+
+def test_malformed_frontmatter_values_are_findings_not_crashes(make_wiki):
+    root = make_wiki()
+    page_fm = "type: concept\ntitle: T\ntags: []\nlast_updated: 2026-01-01\nsource_count: 0\nsources: []\n"
+    write_page(root, "concepts", "stale", page_fm + "topic: tech\nstale_after: 2020-01-01T10:00:00", "body")
+    write_page(root, "concepts", "multi", page_fm + "topic: [tech, other]", "body")
+    note_fm = "type: note\ntitle: N\ntopic: tech\ntags: []\nlast_updated: 2026-01-01\n"
+    write_page(root, "notes", "plain", note_fm + "generated: human:test", "body")
+    for number, value in enumerate(("sub/x.pdf", '""', "[a]")):
+        (root / "raw" / f"bad{number}.md").write_text(f"---\ntype: converted-source\nconverted_from: {value}\n---\n\nbody\n")
+
+    found = lint(root)
+
+    assert ("stale", "stale") in checks(found, "warning")
+    assert ("topics", "multi") in checks(found, "error")
+    assert ("notes", "plain") in checks(found, "info")
+    assert sum(1 for f in found if f.check == "provenance" and "converted_from must be a file name" in f.message) == 3
+
+
+def test_non_utf8_files_are_findings_not_crashes(make_wiki):
+    root = make_wiki()
+    page_fm = "type: concept\ntitle: T\ntopic: tech\ntags: []\nlast_updated: 2026-01-01\nsource_count: 0\nsources: []\n"
+    write_page(root, "concepts", "latin", page_fm, "body")
+    bad = b"---\ntype: x\n---\n\ncaf\xe9\n"
+    (root / "wiki" / "concepts" / "latin.md").write_bytes(bad)
+    (root / "wiki" / "overview.md").write_bytes(bad)
+    (root / "wiki" / "log.jsonl").write_bytes(b'{"date": "x", "op": "y", "desc": "caf\xe9"}\n')
+    (root / "CLAUDE.md").write_bytes(b"wiki: alpha caf\xe9")
+    (root / "raw" / "clip.md").write_bytes(bad)
+
+    found = lint(root)
+
+    encoding = {f.page for f in found if f.check == "encoding"}
+    assert encoding == {"latin", "overview", "log.jsonl", "CLAUDE.md"}
+
+
+def test_non_utf8_index_is_reported_once(make_wiki):
+    root = make_wiki()
+    (root / "wiki" / "index.md").write_bytes(b"caf\xe9")
+    found = lint(root)
+    assert ("encoding", "index") in checks(found, "error")
+    assert not any("is missing" in f.message for f in found)
+
+
+def test_stale_after_that_is_not_a_date_is_a_warning(make_wiki):
+    root = make_wiki()
+    page_fm = "type: concept\ntitle: T\ntopic: tech\ntags: []\nlast_updated: 2026-01-01\nsource_count: 0\nsources: []\n"
+    write_page(root, "concepts", "quoted", page_fm + 'stale_after: "2020-01-01"', "body")
+    write_page(root, "concepts", "empty", page_fm + "stale_after:", "body")
+    write_page(root, "concepts", "past", page_fm + "stale_after: 2020-01-01", "body")
+
+    stale = {f.page: f.message for f in lint(root) if f.check == "stale"}
+
+    assert "not a YYYY-MM-DD date" in stale["quoted"]
+    assert "empty" not in stale
+    assert "has passed" in stale["past"]
+
+
+def test_non_utf8_wiki_toml_is_a_refusal(make_wiki, capsys):
+    from llm_wiki import cli
+
+    root = make_wiki()
+    (root / "wiki.toml").write_bytes(b'name = "caf\xe9"\n')
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["lint", str(root)])
+    assert exit_info.value.code == 2
+    assert "wiki.toml" in capsys.readouterr().err
