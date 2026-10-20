@@ -51,6 +51,14 @@ class Page:
     links: set[str] = field(default_factory=set)
 
 
+def source_slug(raw_md: Path) -> str:
+    """Source page name for a markdown file under raw/: its directories joined to the stem with hyphens.
+
+    `raw/course/module-1.md` -> `course-module-1`; `raw/book.md` -> `book`. `raw/assets/` holds images, not sources.
+    """
+    return "-".join((*raw_md.parent.parts, raw_md.stem))
+
+
 def link_target(raw_link: str) -> str:
     return raw_link.split("|")[0].split("#")[0].strip()
 
@@ -124,6 +132,7 @@ class Linter:
         self.check_cross_links()
         self.check_sources_fields()
         self.check_raw_targets()
+        self.check_source_slugs()
         self.check_conversions()
         self.check_dates_and_generated()
         self.check_index(index_text)
@@ -248,6 +257,26 @@ class Linter:
                 for target in frontmatter_links(page.meta.get(field_name)):
                     if not (self.root / target).exists():
                         self.add("error", "provenance", page.slug, f"{field_name} target {target} does not exist")
+
+    def check_source_slugs(self) -> None:
+        raw = self.root / "raw"
+        by_slug: dict[str, list[str]] = {}
+        for md in sorted(raw.rglob("*.md")):
+            rel = md.relative_to(raw)
+            if rel.parts[0] != "assets":
+                by_slug.setdefault(source_slug(rel), []).append(f"raw/{rel.as_posix()}")
+        for slug, paths in by_slug.items():
+            if len(paths) > 1:
+                self.add("error", "source-names", slug, f"{', '.join(paths)} all map to wiki/sources/{slug}.md")
+        for page in self.pages.values():
+            if page.kind != "sources":
+                continue
+            targets = [t for t in frontmatter_links(page.meta.get("source")) if t.startswith("raw/") and t.endswith(".md")]
+            if len(targets) != 1:
+                continue
+            expected = source_slug(Path(targets[0]).relative_to("raw"))
+            if page.slug != expected:
+                self.add("warning", "source-names", page.slug, f"source {targets[0]} should be named {expected}.md")
 
     def check_conversions(self) -> None:
         referenced = {}

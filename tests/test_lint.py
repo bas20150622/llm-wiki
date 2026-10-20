@@ -205,3 +205,47 @@ def test_non_utf8_wiki_toml_is_a_refusal(make_wiki, capsys):
         cli.main(["lint", str(root)])
     assert exit_info.value.code == 2
     assert "wiki.toml" in capsys.readouterr().err
+
+
+def test_source_slug_joins_directories_to_the_stem():
+    from pathlib import Path
+
+    from llm_wiki.lint import source_slug
+
+    assert source_slug(Path("book.md")) == "book"
+    assert source_slug(Path("course/module-1.md")) == "course-module-1"
+    assert source_slug(Path("a/b/c.md")) == "a-b-c"
+
+
+def test_nested_raw_source_named_after_its_path_is_clean(make_wiki):
+    root = build_clean_wiki(make_wiki)
+    (root / "raw" / "course").mkdir()
+    (root / "raw" / "course" / "intro.md").write_text("raw source")
+    (root / "raw" / "assets" / "notes.md").write_text("not a source")
+    write_page(root, "sources", "course-intro", SOURCE_FM.replace("raw/s.md", "raw/course/intro.md"),
+               "Links [[a]].\n\n## Raw Source\n[[raw/course/intro.md]]")
+    index_with(root, [("Sources", "| [[course-intro]] | x | tech | 2026-01-01 | active |")], topic_count=4)
+    assert [f for f in lint(root) if f.check == "source-names"] == []
+
+
+def test_raw_files_with_the_same_source_name_are_an_error(make_wiki):
+    root = build_clean_wiki(make_wiki)
+    (root / "raw" / "a").mkdir()
+    (root / "raw" / "a" / "b-c.md").write_text("one")
+    (root / "raw" / "a-b").mkdir()
+    (root / "raw" / "a-b" / "c.md").write_text("two")
+    assert ("source-names", "a-b-c") in checks(lint(root), "error")
+    (root / "raw" / "a-b-c.md").write_text("three")
+    clash = [f for f in lint(root) if f.check == "source-names"]
+    assert len(clash) == 1 and clash[0].message.count("raw/") == 3
+
+
+def test_source_page_not_named_after_its_raw_path_is_a_warning(make_wiki):
+    root = build_clean_wiki(make_wiki)
+    (root / "raw" / "course").mkdir()
+    (root / "raw" / "course" / "s.md").write_text("raw source")
+    page = root / "wiki" / "sources" / "s.md"
+    page.write_text(page.read_text().replace("raw/s.md", "raw/course/s.md"))
+    found = [f for f in lint(root) if f.check == "source-names"]
+    assert [(f.severity, f.page) for f in found] == [("warning", "s")]
+    assert "course-s.md" in found[0].message

@@ -89,7 +89,7 @@ Each wiki has its own topic registry: the `## Topics` table at the top of `wiki/
 ## Naming Conventions
 
 - Filenames: lowercase, hyphens, no spaces (e.g., `modal-interchange.md`)
-- Source summaries match raw filenames: `raw/karpathy-llm-wiki.md` -> `wiki/sources/karpathy-llm-wiki.md`
+- Source summaries are named after the raw file's path: the directories under `raw/` joined to the filename stem with hyphens. `raw/karpathy-llm-wiki.md` -> `wiki/sources/karpathy-llm-wiki.md`; `raw/ml-course/module-1.md` -> `wiki/sources/ml-course-module-1.md`. This keeps repeated filenames in different directories apart. `raw/assets/` holds images, not sources. Directory names follow the filename rules above.
 - Use `[[wikilinks]]` everywhere, never markdown links for internal pages
 
 ## Frontmatter Schema
@@ -303,7 +303,7 @@ When the user adds a new source to `raw/` and asks you to process it:
 1. If the source is a non-markdown file (PDF, DOCX, PPTX, XLSX), convert it first (see Document Conversion). Then proceed with the generated `.md` file. If the script refuses to overwrite, report why and ask the user before using `--force`.
 2. Read the source document fully. For a converted file, read its frontmatter: `converted_from` becomes `native_asset` on the source summary.
 3. Discuss key takeaways with the user — what stood out, what to emphasize. Name the registered topic the source belongs to, or propose a new one (see Topics).
-4. Create a source summary page in `wiki/sources/`. Set `topic` and `generated`, and set `native_asset` if the source was converted.
+4. Create a source summary page in `wiki/sources/`, named after the raw file's path (see Naming Conventions). Set `topic` and `generated`, and set `native_asset` if the source was converted.
 5. Identify entities mentioned — for each:
    - If the entity page exists: update it with new facts, add the source to `sources`, and increment `source_count`
    - If new: create the entity page
@@ -360,7 +360,7 @@ When the user asks for a health check:
    ```bash
    llm-wiki lint --json
    ```
-   They cover: frontmatter fields, broken and empty `[[wikilinks]]`, links pointing outside the wiki, topics missing from the registry and registry page counts, orphan pages, one-way links between entity/concept/comparison/howto pages, `source_count` vs the Sources section vs `sources` frontmatter vs body citations, missing `source:`/`native_asset:` targets in `raw/`, stale conversions (`source_sha256` mismatch) and converted sources lacking `native_asset`, `stale_after` dates in the past, pages missing `generated`, index rows vs pages and the total count, notes with no links / over 250 words / not written by the user, non-markdown files in `wiki/`, and invalid `log.jsonl` lines. Do not repeat these checks by hand.
+   They cover: frontmatter fields, broken and empty `[[wikilinks]]`, links pointing outside the wiki, topics missing from the registry and registry page counts, orphan pages, one-way links between entity/concept/comparison/howto pages, `source_count` vs the Sources section vs `sources` frontmatter vs body citations, missing `source:`/`native_asset:` targets in `raw/`, raw markdown files that map to the same source page name, source pages not named after their `source:` path, stale conversions (`source_sha256` mismatch) and converted sources lacking `native_asset`, `stale_after` dates in the past, pages missing `generated`, index rows vs pages and the total count, notes with no links / over 250 words / not written by the user, non-markdown files in `wiki/`, and invalid `log.jsonl` lines. Do not repeat these checks by hand.
 2. Read `wiki/index.md` and the wiki pages (skip `wiki/templates/`) for the judgment checks the command cannot do:
    - Contradictions between pages
    - Stale claims superseded by newer sources

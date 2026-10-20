@@ -19,7 +19,7 @@ The user keeps strictly separated wikis (currently `professional` and `private`)
 ## Architecture
 
 Each wiki has three layers:
-- `raw/` — immutable source documents. Never modify.
+- `raw/` — immutable source documents. Never modify. A source summary is named after its raw file's path: directories joined to the stem with hyphens (`raw/course/module-1.md` -> `wiki/sources/course-module-1.md`).
 - `wiki/` — pages organized into `sources/`, `entities/`, `concepts/`, `comparisons/`, `howtos/`, `notes/`, plus `index.md`, `log.jsonl`, and `overview.md`.
 - This instruction set — the schema governing your behavior.
 
