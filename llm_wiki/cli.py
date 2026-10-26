@@ -23,6 +23,17 @@ from llm_wiki.registry import (
 
 AGENTS = ("claude", "codex")
 
+NEW_DESCRIPTION = """\
+Create a wiki at PATH and register it as NAME.
+The wiki root is PATH itself, with raw/ (your sources) and wiki/ (LLM pages) inside.
+"""
+
+NEW_EXAMPLE = """\
+example:
+  llm-wiki new work ~/Work/wiki --scope "Client work and technology" \\
+    --topic technology="Software and architecture"
+"""
+
 
 def cmd_open(args) -> None:
     refuse_inside_session("open")
@@ -134,8 +145,16 @@ def cmd_schema(args) -> None:
     print(SCHEMA_DIR)
 
 
+class HelpOnErrorParser(argparse.ArgumentParser):
+    """Show the full help with a usage error, not just the one-line usage."""
+
+    def error(self, message: str) -> None:
+        self.print_help(sys.stderr)
+        self.exit(2, f"\n{self.prog}: error: {message}\n")
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="llm-wiki", description=__doc__)
+    parser = HelpOnErrorParser(prog="llm-wiki", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("open", help="start an agent session inside a wiki")
@@ -147,12 +166,18 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("list", help="list registered wikis")
     p.set_defaults(func=cmd_list)
 
-    p = sub.add_parser("new", help="create and register a new wiki")
-    p.add_argument("name")
-    p.add_argument("path")
-    p.add_argument("--scope", required=True, help="one-line description of what the wiki covers")
-    p.add_argument("--topic", action="append", default=[], metavar='NAME="DESCRIPTION"', help="initial topic (repeatable, optional; topics can be added as the wiki grows)")
-    p.add_argument("--user-id", default="human:bas", help="actor id for your notes (default: human:bas)")
+    p = sub.add_parser(
+        "new",
+        help="create and register a new wiki",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=NEW_DESCRIPTION,
+        epilog=NEW_EXAMPLE,
+    )
+    p.add_argument("name", help="wiki name, as in `llm-wiki open NAME`; says nothing about location")
+    p.add_argument("path", help="directory that becomes the wiki root (NAME is not appended); must be new or empty")
+    p.add_argument("--scope", required=True, metavar="TEXT", help="one sentence on what the wiki covers; the LLM uses it to judge what belongs")
+    p.add_argument("--topic", action="append", default=[], metavar='NAME="DESCRIPTION"', help="seed a topic; every page gets one topic (repeatable, optional)")
+    p.add_argument("--user-id", default="human:bas", metavar="ID", help="your author id, stamped on notes you write (default: human:bas)")
     p.set_defaults(func=cmd_new)
 
     p = sub.add_parser("register", help="register an existing wiki directory")
