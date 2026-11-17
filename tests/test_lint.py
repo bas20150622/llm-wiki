@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from llm_wiki.lint import lint
@@ -26,20 +28,23 @@ source_count: 1
 """
 
 
-def index_with(root, rows, topic_count):
+def index_with(root, rows, topic_count, topic="tech"):
+    """Add catalog rows for `topic` and set the registry and total counts."""
     index = root / "wiki" / "index.md"
     text = index.read_text()
-    text = text.replace("| tech | Technology | 0 |", f"| tech | Technology | {topic_count} |")
-    text = text.replace("Total pages: 0", f"Total pages: {topic_count}")
+    text = re.sub(r"\| tech \| Technology \| \d+ \|", f"| tech | Technology | {topic_count} |", text)
+    text = re.sub(r"Total pages: \d+", f"Total pages: {topic_count}", text)
+    index.write_text(text)
+    catalog = root / "wiki" / f"index-{topic}.md"
+    text = catalog.read_text()
     for heading, row in rows:
-        text = text.replace(f"## {heading}\n\n", f"## {heading}\n\n", 1)
         marker = f"## {heading}\n"
         head, _, tail = text.partition(marker)
         lines = tail.split("\n")
         # Insert after the header and separator rows of the table.
         lines.insert(3, row)
         text = head + marker + "\n".join(lines)
-    index.write_text(text)
+    catalog.write_text(text)
 
 
 def build_clean_wiki(make_wiki):
@@ -50,9 +55,9 @@ def build_clean_wiki(make_wiki):
         write_page(root, "concepts", slug, CONCEPT_FM.format(title=slug), f"See [[{other}]].\n\n## Sources\n- [[s]]")
     index_with(
         root,
-        [("Sources", "| [[s]] | x | tech | 2026-01-01 | active |"),
-         ("Concepts", "| [[a]] | tech | high | 1 |"),
-         ("Concepts", "| [[b]] | tech | high | 1 |")],
+        [("Sources", "| [[s]] | x | 2026-01-01 | active |"),
+         ("Concepts", "| [[a]] | high | 1 |"),
+         ("Concepts", "| [[b]] | high | 1 |")],
         topic_count=3,
     )
     return root
@@ -100,7 +105,7 @@ def test_notes_are_reported_not_required_to_cite(make_wiki):
     root = build_clean_wiki(make_wiki)
     write_page(root, "notes", "idea", "type: note\ntitle: Idea\ntopic: tech\ntags: []\nlast_updated: 2026-01-01\ngenerated: {by: claude/x, at: 2026-01-01}",
                "word " * 300)
-    index_with(root, [("Notes", "| [[idea]] | tech | 2026-01-01 |")], topic_count=4)
+    index_with(root, [("Notes", "| [[idea]] | 2026-01-01 |")], topic_count=4)
     findings = lint(root)
     note_findings = {(f.check, f.severity) for f in findings if f.page == "idea"}
     assert note_findings == {("notes", "info")}
@@ -207,45 +212,58 @@ def test_non_utf8_wiki_toml_is_a_refusal(make_wiki, capsys):
     assert "wiki.toml" in capsys.readouterr().err
 
 
-def test_source_slug_joins_directories_to_the_stem():
-    from pathlib import Path
-
-    from llm_wiki.lint import source_slug
-
-    assert source_slug(Path("book.md")) == "book"
-    assert source_slug(Path("course/module-1.md")) == "course-module-1"
-    assert source_slug(Path("a/b/c.md")) == "a-b-c"
-
-
-def test_nested_raw_source_named_after_its_path_is_clean(make_wiki):
+def test_source_page_name_is_free_and_raw_path_is_exact(make_wiki):
     root = build_clean_wiki(make_wiki)
-    (root / "raw" / "course").mkdir()
-    (root / "raw" / "course" / "intro.md").write_text("raw source")
-    (root / "raw" / "assets" / "notes.md").write_text("not a source")
-    write_page(root, "sources", "course-intro", SOURCE_FM.replace("raw/s.md", "raw/course/intro.md"),
-               "Links [[a]].\n\n## Raw Source\n[[raw/course/intro.md]]")
-    index_with(root, [("Sources", "| [[course-intro]] | x | tech | 2026-01-01 | active |")], topic_count=4)
-    assert [f for f in lint(root) if f.check == "source-names"] == []
+    (root / "raw" / "EU Docs").mkdir()
+    (root / "raw" / "EU Docs" / "AI_Act summary.md").write_text("raw source")
+    write_page(root, "sources", "eu-ai-act", SOURCE_FM.replace("raw/s.md", "raw/EU Docs/AI_Act summary.md"),
+               "Links [[a]].\n\n## Raw Source\n[[raw/EU Docs/AI_Act summary.md]]")
+    index_with(root, [("Sources", "| [[eu-ai-act]] | x | 2026-01-01 | active |")], topic_count=4)
+    assert [f for f in lint(root) if f.severity != "info" and f.check != "orphans"] == []
 
 
-def test_raw_files_with_the_same_source_name_are_an_error(make_wiki):
+def test_two_source_pages_for_one_raw_file_are_an_error(make_wiki):
     root = build_clean_wiki(make_wiki)
-    (root / "raw" / "a").mkdir()
-    (root / "raw" / "a" / "b-c.md").write_text("one")
-    (root / "raw" / "a-b").mkdir()
-    (root / "raw" / "a-b" / "c.md").write_text("two")
-    assert ("source-names", "a-b-c") in checks(lint(root), "error")
-    (root / "raw" / "a-b-c.md").write_text("three")
-    clash = [f for f in lint(root) if f.check == "source-names"]
-    assert len(clash) == 1 and clash[0].message.count("raw/") == 3
+    write_page(root, "sources", "s-again", SOURCE_FM, "Links [[a]].\n\n## Raw Source\n[[raw/s.md]]")
+    index_with(root, [("Sources", "| [[s-again]] | x | 2026-01-01 | active |")], topic_count=4)
+    found = [f for f in lint(root) if f.check == "duplicates"]
+    assert [(f.severity, f.page) for f in found] == [("error", "raw/s.md")]
+    assert "s, s-again" in found[0].message
 
 
-def test_source_page_not_named_after_its_raw_path_is_a_warning(make_wiki):
+def test_source_page_without_one_raw_source_is_a_warning(make_wiki):
     root = build_clean_wiki(make_wiki)
-    (root / "raw" / "course").mkdir()
-    (root / "raw" / "course" / "s.md").write_text("raw source")
     page = root / "wiki" / "sources" / "s.md"
-    page.write_text(page.read_text().replace("raw/s.md", "raw/course/s.md"))
-    found = [f for f in lint(root) if f.check == "source-names"]
-    assert [(f.severity, f.page) for f in found] == [("warning", "s")]
-    assert "course-s.md" in found[0].message
+    page.write_text(page.read_text().replace('source: "[[raw/s.md]]"\n', ""))
+    assert ("provenance", "s") in checks(lint(root), "warning")
+
+
+def test_page_in_the_wrong_catalog_or_missing_catalog(make_wiki):
+    root = make_wiki(topics={"tech": "Technology", "law": "Law"})
+    page_fm = "type: concept\ntitle: T\ntopic: tech\ntags: []\nlast_updated: 2026-01-01\nsource_count: 0\nsources: []\n"
+    write_page(root, "concepts", "misfiled", page_fm, "body")
+    index_with(root, [("Concepts", "| [[misfiled]] | high | 0 |"), ("Concepts", "| [[ghost]] | high | 0 |")], topic_count=1, topic="law")
+    messages = {(f.page, f.message) for f in lint(root) if f.check == "index"}
+    assert ("misfiled", "page is missing from index-tech.md") in messages
+    assert ("misfiled", "listed in index-law.md, but its topic is 'tech'") in messages
+    assert ("ghost", "index-law.md lists a page that does not exist") in messages
+
+    (root / "wiki" / "index-law.md").rename(root / "wiki" / "index-old.md")
+    found = {(f.severity, f.page) for f in lint(root) if f.check == "index"}
+    assert ("error", "index-law") in found and ("warning", "index-old") in found
+
+
+def test_catalog_links_resolve_and_count_as_links(make_wiki):
+    root = build_clean_wiki(make_wiki)
+    overview = root / "wiki" / "overview.md"
+    overview.write_text(overview.read_text() + "\nSee [[index-tech]] and [[index-nope]].\n")
+    broken = {f.message for f in lint(root) if f.check == "links"}
+    assert broken == {"broken wikilink [[index-nope]]"}
+
+
+def test_schema_3_index_is_one_error_not_one_per_page(make_wiki):
+    root = build_clean_wiki(make_wiki)
+    index = root / "wiki" / "index.md"
+    index.write_text(index.read_text() + "\n## Sources\n\n| Page | Author | Topic | Date | Status |\n|-|-|-|-|-|\n")
+    found = [f for f in lint(root) if f.check == "index"]
+    assert len(found) == 1 and "split-index" in found[0].message

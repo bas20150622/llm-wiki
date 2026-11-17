@@ -13,7 +13,8 @@ from pathlib import Path
 
 import yaml
 
-from llm_wiki.registry import read_identity, schema_warning
+from llm_wiki.registry import NAME_PATTERN, read_identity, schema_warning
+from llm_wiki.scaffold import CATALOG_TABLES, catalog_name
 
 KIND_TYPE = {
     "sources": "source",
@@ -51,14 +52,6 @@ class Page:
     links: set[str] = field(default_factory=set)
 
 
-def source_slug(raw_md: Path) -> str:
-    """Source page name for a markdown file under raw/: its directories joined to the stem with hyphens.
-
-    `raw/course/module-1.md` -> `course-module-1`; `raw/book.md` -> `book`. `raw/assets/` holds images, not sources.
-    """
-    return "-".join((*raw_md.parent.parts, raw_md.stem))
-
-
 def link_target(raw_link: str) -> str:
     return raw_link.split("|")[0].split("#")[0].strip()
 
@@ -87,13 +80,18 @@ def section_links(body: str, heading: str) -> list[str]:
     return [link_target(l) for l in WIKILINK.findall(match.group(1))] if match else []
 
 
-def table_rows(markdown: str, heading: str) -> list[list[str]]:
-    """Data rows of the first table under `## heading`, as lists of cell strings."""
+def table(markdown: str, heading: str) -> tuple[list[str], list[list[str]]]:
+    """Header and data rows of the first table under `## heading`, as lists of cell strings."""
     match = re.search(rf"^## {re.escape(heading)}\n(.*?)(?=^## |\Z)", markdown, re.MULTILINE | re.DOTALL)
     if not match:
-        return []
+        return [], []
     rows = [line for line in match.group(1).splitlines() if line.startswith("|")]
-    return [[cell.strip() for cell in row.strip("|").split("|")] for row in rows[2:]]
+    cells = [[cell.strip() for cell in row.strip().strip("|").split("|")] for row in rows]
+    return (cells[0] if cells else []), cells[2:]
+
+
+def table_rows(markdown: str, heading: str) -> list[list[str]]:
+    return table(markdown, heading)[1]
 
 
 def frontmatter_links(value) -> list[str]:
@@ -107,6 +105,7 @@ class Linter:
         self.wiki = root / "wiki"
         self.findings: list[Finding] = []
         self.pages: dict[str, Page] = {}
+        self.catalogs: dict[str, str] = {}  # topic -> text of wiki/index-<topic>.md
 
     def add(self, severity: str, check: str, page: str, message: str) -> None:
         self.findings.append(Finding(severity, check, page, message))
@@ -127,15 +126,19 @@ class Linter:
             index_text = ""
         elif not index_text:
             self.add("error", "index", "index", "wiki/index.md is missing")
-        self.check_topics(index_text)
+        legacy = self.check_index_format(index_text)
+        registry = self.check_topics(index_text)
+        if not legacy:
+            self.load_catalogs(registry)
         self.check_links(index_text)
         self.check_cross_links()
         self.check_sources_fields()
         self.check_raw_targets()
-        self.check_source_slugs()
+        self.check_source_identity()
         self.check_conversions()
         self.check_dates_and_generated()
-        self.check_index(index_text)
+        if not legacy:
+            self.check_index(index_text)
         self.check_notes()
         self.check_stray_files()
         self.check_log()
@@ -170,16 +173,39 @@ class Linter:
                 if meta.get("type") and meta["type"] != KIND_TYPE[kind]:
                     self.add("warning", "frontmatter", slug, f"type '{meta['type']}' does not match folder {kind}/")
 
+    def load_catalogs(self, registry: dict[str, str]) -> None:
+        for topic in registry:
+            path = self.wiki / f"{catalog_name(topic)}.md"
+            if not path.exists():
+                self.add("error", "index", catalog_name(topic), f"registered topic '{topic}' has no catalog wiki/{path.name}")
+                continue
+            text = self.read(path, catalog_name(topic))
+            self.catalogs[topic] = text or ""
+        for path in sorted(self.wiki.glob("index-*.md")):
+            if path.stem.removeprefix("index-") not in registry:
+                self.add("warning", "index", path.stem, "catalog for a topic that is not in the registry")
+
     # --- checks ----------------------------------------------------------------
 
-    def check_topics(self, index_text: str) -> None:
+    def check_index_format(self, index_text: str) -> bool:
+        """True when index.md still holds the page tables of schema 3 and earlier."""
+        if any(re.search(rf"^## {heading}\s*$", index_text, re.MULTILINE) for heading in CATALOG_TABLES):
+            self.add("error", "index", "index", "index.md still holds the page tables: run `llm-wiki split-index` to move them into per-topic catalogs")
+            return True
+        return False
+
+    def check_topics(self, index_text: str) -> dict[str, str]:
+        """Check pages against the topic registry and return it as {topic: listed page count}."""
         if not re.search(r"^## Topics\s*$", index_text, re.MULTILINE):
             self.add("error", "topics", "index", "no `## Topics` registry in index.md")
-            return
+            return {}
         # An empty registry is valid: topics are added as the wiki grows.
         registry = {
             row[0]: row[2] for row in table_rows(index_text, "Topics") if len(row) >= 3 and row[0] not in ("", "—")
         }
+        for topic in registry:
+            if not NAME_PATTERN.match(topic):
+                self.add("error", "topics", "index", f"topic '{topic}' is not lowercase and hyphenated")
         counts: dict[str, int] = {}
         for page in self.pages.values():
             topic = page.meta.get("topic")
@@ -192,9 +218,12 @@ class Linter:
         for topic, listed in registry.items():
             if listed.isdigit() and int(listed) != counts.get(topic, 0):
                 self.add("warning", "topics", "index", f"topic '{topic}' lists {listed} pages, actual {counts.get(topic, 0)}")
+        return registry
 
     def resolve(self, target: str) -> bool:
         if target in self.pages or target in ("index", "overview"):
+            return True
+        if target in {catalog_name(t) for t in self.catalogs}:
             return True
         return target.startswith("raw/") and (self.root / target).exists()
 
@@ -202,6 +231,8 @@ class Linter:
         overview = self.wiki / "overview.md"
         sources = [(p.slug, p.links) for p in self.pages.values()]
         sources.append(("index", {link_target(l) for l in WIKILINK.findall(index_text)}))
+        for topic, text in self.catalogs.items():
+            sources.append((catalog_name(topic), {link_target(l) for l in WIKILINK.findall(text)}))
         overview_text = self.read(overview, "overview") if overview.exists() else None
         if overview_text is not None:
             sources.append(("overview", {link_target(l) for l in WIKILINK.findall(overview_text)}))
@@ -258,25 +289,20 @@ class Linter:
                     if not (self.root / target).exists():
                         self.add("error", "provenance", page.slug, f"{field_name} target {target} does not exist")
 
-    def check_source_slugs(self) -> None:
-        raw = self.root / "raw"
-        by_slug: dict[str, list[str]] = {}
-        for md in sorted(raw.rglob("*.md")):
-            rel = md.relative_to(raw)
-            if rel.parts[0] != "assets":
-                by_slug.setdefault(source_slug(rel), []).append(f"raw/{rel.as_posix()}")
-        for slug, paths in by_slug.items():
-            if len(paths) > 1:
-                self.add("error", "source-names", slug, f"{', '.join(paths)} all map to wiki/sources/{slug}.md")
+    def check_source_identity(self) -> None:
+        """A source page is tied to its raw file by `source:` alone; its name is free."""
+        by_raw: dict[str, list[str]] = {}
         for page in self.pages.values():
             if page.kind != "sources":
                 continue
-            targets = [t for t in frontmatter_links(page.meta.get("source")) if t.startswith("raw/") and t.endswith(".md")]
+            targets = [t for t in frontmatter_links(page.meta.get("source")) if t.startswith("raw/")]
             if len(targets) != 1:
+                self.add("warning", "provenance", page.slug, f"source: should link exactly one raw/ file, links {len(targets)}")
                 continue
-            expected = source_slug(Path(targets[0]).relative_to("raw"))
-            if page.slug != expected:
-                self.add("warning", "source-names", page.slug, f"source {targets[0]} should be named {expected}.md")
+            by_raw.setdefault(targets[0], []).append(page.slug)
+        for target, slugs in sorted(by_raw.items()):
+            if len(slugs) > 1:
+                self.add("error", "duplicates", target, f"{', '.join(sorted(slugs))} all summarize {target}")
 
     def check_conversions(self) -> None:
         referenced = {}
@@ -321,14 +347,24 @@ class Linter:
             self.add("info", "generated", "*", f"{len(missing_generated)} pages have no `generated` field (predate the schema)")
 
     def check_index(self, index_text: str) -> None:
-        indexed = set()
-        for heading in ("Sources", "Entities", "Concepts", "Comparisons", "Howtos", "Notes"):
-            for row in table_rows(index_text, heading):
-                indexed.update(link_target(l) for l in WIKILINK.findall(row[0]))
-        for slug in sorted(set(self.pages) - indexed):
-            self.add("error", "index", slug, "page is missing from index.md")
-        for slug in sorted(indexed - set(self.pages)):
-            self.add("error", "index", slug, "index.md lists a page that does not exist")
+        listed: dict[str, set[str]] = {}  # page slug -> topics whose catalog lists it
+        for topic, text in self.catalogs.items():
+            for heading in CATALOG_TABLES:
+                for row in table_rows(text, heading):
+                    for slug in (link_target(l) for l in WIKILINK.findall(row[0])):
+                        listed.setdefault(slug, set()).add(topic)
+        for slug, page in sorted(self.pages.items()):
+            topic, topics = page.meta.get("topic"), listed.get(slug, set())
+            topic = topic if isinstance(topic, str) else None  # A list or mapping is reported by check_topics.
+            if topic in self.catalogs and topic not in topics:
+                self.add("error", "index", slug, f"page is missing from {catalog_name(topic)}.md")
+            elif not topics:
+                self.add("error", "index", slug, "page is not listed in any topic catalog")
+            for other in sorted(topics - {topic}):
+                self.add("error", "index", slug, f"listed in {catalog_name(other)}.md, but its topic is '{topic}'")
+        for slug in sorted(set(listed) - set(self.pages)):
+            catalogs = ", ".join(f"{catalog_name(t)}.md" for t in sorted(listed[slug]))
+            self.add("error", "index", slug, f"{catalogs} lists a page that does not exist")
         total = re.search(r"Total pages:\s*(\d+)", index_text)
         if total and int(total.group(1)) != len(self.pages):
             self.add("warning", "index", "index", f"Total pages says {total.group(1)}, actual {len(self.pages)}")

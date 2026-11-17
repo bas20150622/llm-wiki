@@ -19,29 +19,31 @@ This repository is the **engine**: the shared schema and the `llm-wiki` command.
   raw/                            your sources (immutable)
   .obsidian/                      Obsidian config: the wiki root is the vault
   wiki/                           LLM pages + your notes
+    index.md                      totals and topic registry
+    index-<topic>.md              catalog of one topic's pages
 ```
 
 **Layers in each wiki:**
 
 | Layer | Owner | Purpose |
 |-------|-------|---------|
-| `raw/` | You | Immutable source documents — articles, papers, clippings |
+| `raw/` | You | Immutable source documents — articles, papers, clippings — in any folder structure and with any file names |
 | `wiki/` | LLM | Generated pages — summaries, entities, concepts, comparisons, howtos |
 | `wiki/notes/` | You | Your own Zettelkasten notes — the LLM links to them but never writes them |
 
 **Operations** (run inside a wiki session):
 
-- **Ingest** — drop a source in `raw/`, tell the LLM to process it. It writes a summary, creates/updates entity and concept pages, maintains cross-references, links your related notes, updates the index.
-- **Query** — ask questions against the wiki. The LLM keeps your notes' position separate from what sources claim. Good answers get filed back as new pages.
+- **Ingest** — drop a source in `raw/`, tell the LLM to process it. It writes a summary, creates/updates entity and concept pages, maintains cross-references, links your related notes, and updates the topic's catalog.
+- **Query** — ask questions against the wiki. The LLM reads the topic registry, then only the catalogs of the topics your question touches. The LLM keeps your notes' position separate from what sources claim. Good answers get filed back as new pages.
 - **Delete** — remove a source and cascade the cleanup through entity and concept pages. Notes are never deleted.
-- **Lint** — `llm-wiki lint` runs the mechanical checks; the LLM adds judgment checks such as contradictions and missing concepts.
+- **Lint** — `llm-wiki lint` runs the mechanical checks; the LLM adds judgment checks such as contradictions and missing concepts, one topic at a time.
 
 ## Separation
 
 Each session works on one wiki and cannot reach the others:
 
 - **Storage:** the engine, each wiki, and the registry live in different places. Work content can stay on employer storage and private content on personal storage.
-- **Session scope:** `llm-wiki open <name>` starts the agent inside that wiki with `LLM_WIKI_ACTIVE=<name>` set. Inside such a session, `llm-wiki convert` and `llm-wiki lint` refuse to touch any other wiki, and the registry commands (`open`, `list`, `new`, `register`, `unregister`, `sync-permissions`) refuse to run at all.
+- **Session scope:** `llm-wiki open <name>` starts the agent inside that wiki with `LLM_WIKI_ACTIVE=<name>` set. Inside such a session, `llm-wiki convert`, `llm-wiki lint`, and `llm-wiki split-index` refuse to touch any other wiki, and the registry commands (`open`, `list`, `new`, `register`, `unregister`, `sync-permissions`) refuse to run at all.
 - **Permissions:** each wiki's `.claude/settings.json` denies Claude Code's file tools access to every other registered wiki and to the registry, and denies the registry commands. `llm-wiki sync-permissions` rewrites these rules; `new`, `register`, and `unregister` run it for you. Other rules you add to the file are kept.
 - **Schema rules:** the shared schema tells the LLM never to read, link, or mention another wiki.
 - **Limit:** permission rules cover Claude Code's file tools, not arbitrary shell commands. A shell command such as `cat` on another wiki's path is still possible if you approve it.
@@ -77,6 +79,9 @@ llm-wiki open --agent codex work        # start Codex instead
 # Inside a session (the LLM runs these):
 llm-wiki convert raw/report.pdf         # PDF, DOCX, PPTX, XLSX -> markdown
 llm-wiki lint                           # mechanical health checks (--json for machine output)
+
+# Once per wiki, when upgrading from schema 3:
+llm-wiki split-index ~/Work/wiki        # move index.md's page tables into per-topic catalogs
 ```
 
 Run one session per wiki. Changing directory inside a session does not switch wikis; start a new session with `llm-wiki open`.
@@ -111,9 +116,13 @@ A session in the engine repository is for developing the engine (see `CLAUDE.md`
 
 ChatGPT cannot write files — it outputs markdown blocks that you copy into the wiki.
 
-## Topics
+## Topics and the index
 
-Each wiki has its own topic registry: the `## Topics` table at the top of `wiki/index.md`. Every page has one `topic`; tags cover anything cross-cutting. When a new source fits no registered topic, the LLM proposes one and adds it only after you approve. You can also ask directly ("add a topic for data governance").
+Each wiki has its own topic registry: the `## Topics` table in `wiki/index.md`, next to the page totals. Every page has one `topic`; tags cover anything cross-cutting.
+
+The pages themselves are listed per topic, in `wiki/index-<topic>.md`, one table per page type. The registry's Index column links to each catalog, so in Obsidian you click from `index.md` to a topic. The LLM reads the registry first and then only the catalogs it needs, so a large wiki doesn't cost a full index read on every operation. `llm-wiki lint` checks that every page is listed in the catalog of its own topic, and only there. When a new source fits no registered topic, the LLM proposes one and adds it only after you approve. You can also ask directly ("add a topic for data governance").
+
+Splitting a large topic means changing the `topic` of its pages and moving their rows to the new catalogs; ask the LLM to do it and run `llm-wiki lint` afterwards to catch any it missed.
 
 Filter by topic in Dataview:
 ```
@@ -130,6 +139,12 @@ TABLE title, source_count FROM "concepts" WHERE topic = "technology"
 - The LLM never writes or edits a note. It links concept pages to your notes, tells you when a source contradicts one, and keeps "your note says" separate from "sources say".
 - Notes need no source citations.
 
+## Sources and raw files
+
+`raw/` takes any folder structure and file names, including subfolders, spaces, capitals, and underscores. Each raw file gets one source summary in `wiki/sources/`, and the summary's `source:` field holds the raw path exactly, for example `source: "[[raw/EU Docs/AI_Act summary.md]]"`. That field is the link; the summary's file name is just a readable, hyphenated label such as `eu-docs-ai-act-summary.md`. Entity and concept pages cite the summary, never the raw file. `llm-wiki lint` reports a summary whose `source:` is missing or points to a file that does not exist, and two summaries for the same raw file.
+
+To use files kept elsewhere, symlink them into `raw/` one by one (`ln -s ../../Research/*.md .` from inside `raw/`). Don't symlink a whole folder: lint does not follow directory symlinks. Inside a wiki session, `llm-wiki convert` refuses a symlinked PDF or DOCX whose target is outside the wiki; copy those in, or convert them from a normal terminal.
+
 ## Provenance
 
 The schema borrows provenance fields from Google's [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) (OKF), without adopting the rest of it. The wiki keeps `[[wikilinks]]` and `log.jsonl`, where OKF uses markdown links and a prose `log.md`.
@@ -142,6 +157,13 @@ The schema borrows provenance fields from Google's [Open Knowledge Format](https
 ## Schema versions
 
 Each wiki's `wiki.toml` declares the `schema_version` it follows. `llm-wiki open` and `llm-wiki lint` warn when it differs from the engine. `schema/CHANGELOG.md` lists each version's migration steps.
+
+Upgrading a schema 3 wiki to 4:
+
+1. Pull the engine: `cd ~/tools/llm-wiki && git pull`.
+2. From a normal terminal, run `llm-wiki sync-permissions` so wiki sessions may run the migration.
+3. Run `llm-wiki split-index <wiki root>`. It refuses, and changes nothing, if a row in `index.md` has a topic that is not in the registry; fix those rows and run it again. Page files are not renamed.
+4. Run `llm-wiki lint <wiki root>` and fix what it reports.
 
 ## Development
 

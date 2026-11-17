@@ -21,7 +21,12 @@ def test_new_creates_and_registers_wiki(tmp_path, capsys):
     assert "wiki: work" in claude_md and "@" in claude_md and "schema/CLAUDE.md" in claude_md
     assert json.loads((root / ".claude" / "settings.local.json").read_text()) == {"model": "sonnet"}
     index = (root / "wiki" / "index.md").read_text()
-    assert "| tech | Technology | 0 |" in index and "| consulting | consulting | 0 |" in index
+    assert "| tech | Technology | 0 | [[index-tech]] |" in index and "| consulting | consulting | 0 | [[index-consulting]] |" in index
+    assert "## Sources" not in index
+    catalog = (root / "wiki" / "index-tech.md").read_text()
+    assert "## Sources\n\n| Page | Author | Date | Status |" in catalog and "## Notes" in catalog
+    log = json.loads((root / "wiki" / "log.jsonl").read_text())
+    assert log["created"] == ["index", "index-tech", "index-consulting", "overview"]
     for sub in ("sources", "entities", "concepts", "comparisons", "howtos", "notes", "templates"):
         assert (root / "wiki" / sub).is_dir()
     assert not (root / "wiki" / ".obsidian").exists()
@@ -39,8 +44,9 @@ def test_new_without_topics_starts_with_empty_registry(tmp_path):
     root = tmp_path / "blank"
     run("new", "blank", str(root), "--scope", "Starts empty")
     index = (root / "wiki" / "index.md").read_text()
-    topics_section = index.split("## Topics")[1].split("## Sources")[0]
-    assert topics_section.strip().splitlines() == ["| Topic | Description | Pages |", "|-------|-------------|-------|"]
+    topics_section = index.split("## Topics")[1]
+    assert topics_section.strip().splitlines() == ["| Topic | Description | Pages | Index |", "|-------|-------------|-------|-------|"]
+    assert list((root / "wiki").glob("index-*.md")) == []
     assert "No topics yet" in (root / "wiki" / "overview.md").read_text()
     assert lint(root) == []
 

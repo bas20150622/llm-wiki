@@ -36,9 +36,37 @@ def write_identity(root: Path, name: str, scope: str, user_id: str) -> None:
         local_settings.write_text(json.dumps({"model": "sonnet"}, indent=2) + "\n", encoding="utf-8")
 
 
+# Page tables in each topic catalog (wiki/index-<topic>.md) and their default columns.
+CATALOG_TABLES = {
+    "Sources": ["Page", "Author", "Date", "Status"],
+    "Entities": ["Page", "Type", "Sources"],
+    "Concepts": ["Page", "Confidence", "Sources"],
+    "Comparisons": ["Page", "Items"],
+    "Howtos": ["Page", "Theme"],
+    "Notes": ["Page", "Last updated"],
+}
+REGISTRY_HEADER = ["Topic", "Description", "Pages", "Index"]
+
+
+def catalog_name(topic: str) -> str:
+    return f"index-{topic}"
+
+
+def markdown_table(header: list[str], rows: list[list[str]]) -> str:
+    lines = ["| " + " | ".join(header) + " |", "|" + "|".join("-" * (len(h) + 2) for h in header) + "|"]
+    lines += ["| " + " | ".join(row) + " |" for row in rows or [["—"] * len(header)]]
+    return "\n".join(lines)
+
+
+def registry_section(rows: list[tuple[str, str, str]]) -> str:
+    """The `## Topics` registry from (topic, description, page count) rows."""
+    table = markdown_table(REGISTRY_HEADER, [[t, d, n, f"[[{catalog_name(t)}]]"] for t, d, n in rows])
+    if not rows:
+        table = "\n".join(table.splitlines()[:2])  # An empty registry has no placeholder row.
+    return f"## Topics\n\n{table}\n"
+
+
 def index_page(name: str, topics: dict[str, str]) -> str:
-    topic_rows = "\n".join(f"| {t} | {d} | 0 |" for t, d in topics.items())
-    empty = lambda cols: "| " + " | ".join(["—"] * cols) + " |"
     return f"""---
 type: overview
 title: "Wiki Index"
@@ -49,48 +77,26 @@ last_updated: {date.today().isoformat()}
 
 Wiki: {name} | Total pages: 0 | Sources: 0 | Entities: 0 | Concepts: 0 | Comparisons: 0 | Howtos: 0 | Notes: 0
 
-## Topics
+{registry_section([(t, d, "0") for t, d in topics.items()])}"""
 
-| Topic | Description | Pages |
-|-------|-------------|-------|
-{topic_rows}
 
-## Sources
+def catalog_page(topic: str, tables: dict[str, tuple[list[str], list[list[str]]]] | None = None) -> str:
+    """A topic catalog. `tables` maps each heading in CATALOG_TABLES to (header, rows); missing ones are empty."""
+    tables = tables or {}
+    sections = "\n".join(
+        f"## {heading}\n\n{markdown_table(*tables.get(heading, (header, [])))}\n" for heading, header in CATALOG_TABLES.items()
+    )
+    return f"""---
+type: overview
+title: "Index: {topic}"
+last_updated: {date.today().isoformat()}
+---
 
-| Page | Author | Topic | Date | Status |
-|------|--------|-------|------|--------|
-{empty(5)}
+# Index: {topic}
 
-## Entities
+Pages with `topic: {topic}`. The topic registry and totals are in [[index]].
 
-| Page | Type | Topic | Sources |
-|------|------|-------|---------|
-{empty(4)}
-
-## Concepts
-
-| Page | Topic | Confidence | Sources |
-|------|-------|------------|---------|
-{empty(4)}
-
-## Comparisons
-
-| Page | Topic | Items |
-|------|-------|-------|
-{empty(3)}
-
-## Howtos
-
-| Page | Theme | Topic |
-|------|-------|-------|
-{empty(3)}
-
-## Notes
-
-| Page | Topic | Last updated |
-|------|-------|--------------|
-{empty(3)}
-"""
+{sections}"""
 
 
 def overview_page(topics: dict[str, str]) -> str:
@@ -118,9 +124,12 @@ def create_wiki(root: Path, name: str, scope: str, user_id: str, topics: dict[st
     write_identity(root, name, scope, user_id)
 
     (wiki / "index.md").write_text(index_page(name, topics), encoding="utf-8")
+    for topic in topics:
+        (wiki / f"{catalog_name(topic)}.md").write_text(catalog_page(topic), encoding="utf-8")
     (wiki / "overview.md").write_text(overview_page(topics), encoding="utf-8")
     topic_text = f"topics {', '.join(topics)}" if topics else "no topics yet"
-    entry = {"date": date.today().isoformat(), "op": "create", "desc": f"Created wiki '{name}' with {topic_text}", "created": ["index", "overview"]}
+    created = ["index", *(catalog_name(t) for t in topics), "overview"]
+    entry = {"date": date.today().isoformat(), "op": "create", "desc": f"Created wiki '{name}' with {topic_text}", "created": created}
     (wiki / "log.jsonl").write_text(json.dumps(entry) + "\n", encoding="utf-8")
     (wiki / "templates" / "note.md").write_text(render("note.md", user_id=user_id), encoding="utf-8")
     shutil.copytree(TEMPLATES / "obsidian", root / ".obsidian")
