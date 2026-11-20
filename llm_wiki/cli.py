@@ -1,4 +1,4 @@
-"""The llm-wiki command: open, create, and register wikis; convert sources; lint a wiki."""
+"""The llm-wiki command: open, create, and register wikis; convert sources; lint and migrate a wiki."""
 
 import argparse
 import os
@@ -141,6 +141,16 @@ def cmd_lint(args) -> None:
     sys.exit(1 if any(f.severity == "error" for f in findings) else 0)
 
 
+def cmd_split_index(args) -> None:
+    from llm_wiki.migrate import split_index
+
+    root = find_wiki_root(Path(args.path) if args.path else Path.cwd())
+    check_active(root)
+    created = split_index(root)
+    print(f"Split wiki/index.md into {len(created)} catalogs: {', '.join(f'wiki/{name}.md' for name in created) or 'none'}")
+    print("The wiki now declares schema_version 4. Run `llm-wiki lint` to check the result.")
+
+
 def cmd_schema(args) -> None:
     print(SCHEMA_DIR)
 
@@ -201,6 +211,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("path", nargs="?", help="any path inside the wiki (default: current directory)")
     p.add_argument("--json", action="store_true", help="machine-readable output")
     p.set_defaults(func=cmd_lint)
+
+    p = sub.add_parser("split-index", help="migrate a schema 3 wiki: move index.md's page tables into per-topic catalogs")
+    p.add_argument("path", nargs="?", help="any path inside the wiki (default: current directory)")
+    p.set_defaults(func=cmd_split_index)
 
     p = sub.add_parser("schema", help="print the schema directory")
     p.set_defaults(func=cmd_schema)

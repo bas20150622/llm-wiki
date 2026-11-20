@@ -19,20 +19,20 @@ The user keeps strictly separated wikis (currently `professional` and `private`)
 ## Architecture
 
 Each wiki has three layers:
-- `raw/` — immutable source documents. Never modify. A source summary is named after its raw file's path: directories joined to the stem with hyphens (`raw/course/module-1.md` -> `wiki/sources/course-module-1.md`).
-- `wiki/` — pages organized into `sources/`, `entities/`, `concepts/`, `comparisons/`, `howtos/`, `notes/`, plus `index.md`, `log.jsonl`, and `overview.md`.
+- `raw/` — immutable source documents, in any folder structure and with any file names. Never modify.
+- `wiki/` — pages organized into `sources/`, `entities/`, `concepts/`, `comparisons/`, `howtos/`, `notes/`, plus `index.md` (totals and topic registry), one catalog per topic (`index-<topic>.md`), `log.jsonl`, and `overview.md`.
 - This instruction set — the schema governing your behavior.
 
 ## Topics
 
-Each wiki has its own topic registry: the `## Topics` table at the top of its `index.md`. Ask the user to paste it if you don't have it.
+Each wiki has its own topic registry: the `## Topics` table in its `index.md`. Each topic's pages are listed in its catalog, `index-<topic>.md`, with tables for Sources, Entities, Concepts, Comparisons, Howtos, and Notes (no Topic column). Ask the user to paste the registry and the catalogs of the topics you need if you don't have them.
 
 - Every page has exactly one `topic` from the registry.
-- If no topic fits, propose a new topic name and one-line description. Only after the user approves, output the new registry row and an `overview.md` section.
+- If no topic fits, propose a new topic name and one-line description. Only after the user approves, output the new registry row, a new empty `index-<topic>.md`, and an `overview.md` section.
 
 ## Conventions
 
-- Filenames: lowercase, hyphens, no spaces
+- Wiki page filenames: lowercase, hyphens, no spaces. A source summary's name is derived from the raw path (lowercased, spaces and underscores turned into hyphens); its `source:` field holds the raw path exactly as it is
 - Use `[[wikilinks]]` for all internal links
 - Every page has YAML frontmatter with: `type`, `title`, `topic`, `tags`, `last_updated`, `generated`
 - `generated` is `{by: chatgpt/<model-name>, at: YYYY-MM-DD}`. Set it on every page you output.
@@ -48,7 +48,7 @@ Each wiki has its own topic registry: the `## Topics` table at the top of its `i
 
 ## Frontmatter by Type
 
-**Source** (save to `wiki/sources/`): add `source`, `native_asset` (the original PDF/DOCX/PPTX/XLSX, if the source was converted), `author`, `date`, `status` (active/outdated)
+**Source** (save to `wiki/sources/`): add `source` (the exact raw path as a wikilink), `native_asset` (the original PDF/DOCX/PPTX/XLSX, if the source was converted), `author`, `date`, `status` (active/outdated)
 **Entity** (save to `wiki/entities/`): add `entity_type` (person/organization/tool/album/book/framework), `sources` (list of cited source wikilinks), `source_count` (must equal the length of `sources`)
 **Concept** (save to `wiki/concepts/`): add `confidence` (high/medium/low), `sources` (list of cited source wikilinks), `source_count` (must equal the length of `sources`)
 **Comparison** (save to `wiki/comparisons/`): add `items` list
@@ -83,7 +83,7 @@ When the user shares a source:
 2. Output a source summary page (specify file path)
 3. Output new or updated entity pages
 4. Output new or updated concept pages
-5. Output an index.md update (new rows to add)
+5. Output the rows to add to the topic's catalog (`index-<topic>.md`) and the updated counts for `index.md`
 6. Output a log.jsonl entry
 
 For each output block, specify the file path and whether it's a new file or an update to an existing one.
@@ -91,7 +91,7 @@ For each output block, specify the file path and whether it's a new file or an u
 ## Query Workflow
 
 When the user asks a question:
-1. Ask to see relevant wiki pages (or the full index.md) if you don't have them
+1. Ask to see the registry, then the catalogs of the relevant topics, then the relevant pages, if you don't have them
 2. Synthesize an answer with wikilinks
 3. If the answer is worth keeping, offer to format it as a new wiki page
 
@@ -101,7 +101,7 @@ When the user wants to remove a source:
 1. Confirm which source to delete
 2. Identify all entity and concept pages that reference it
 3. Output updated entity/concept pages with citations removed, the source removed from `sources`, and source_count decremented. If source_count reaches 0, instruct the user to delete the page.
-4. Output the updated index.md (rows removed, counts updated)
+4. Output the rows to remove from the topic catalogs and the updated counts for `index.md`
 5. Output a log.jsonl entry with operation `delete`
 6. Instruct the user to delete the source summary and raw file
 
@@ -110,10 +110,10 @@ When the user wants to remove a source:
 1. Never modify `raw/` content
 2. Always use `[[wikilinks]]`
 3. Cite sources — every claim links to a source
-4. Check for existing pages before suggesting new ones
+4. Check for existing pages before suggesting new ones, including pages filed under other topics
 5. One entity/concept per page
 6. Cross-reference in both directions
-7. Always include index.md updates and log.jsonl entries with your output
+7. Always include catalog and index.md updates and log.jsonl entries with your output
 8. Keep `sources` and `source_count` in sync on entity and concept pages
 9. Use registered topics only; propose new ones and wait for approval
 10. Keep wikis strictly separated

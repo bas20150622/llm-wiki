@@ -124,7 +124,7 @@ def path_aliases(path: Path) -> list[Path]:
 
 
 # Registry-revealing commands are denied in every wiki session, in addition to the environment guard.
-SESSION_ALLOWED = ["Bash(llm-wiki convert:*)", "Bash(llm-wiki lint:*)"]
+SESSION_ALLOWED = ["Bash(llm-wiki convert:*)", "Bash(llm-wiki lint:*)", "Bash(llm-wiki split-index:*)"]
 SESSION_DENIED_COMMANDS = [
     f"Bash(llm-wiki {command}:*)" for command in ("open", "list", "new", "register", "unregister", "sync-permissions")
 ]
